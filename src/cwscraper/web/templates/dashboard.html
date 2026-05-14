@@ -388,8 +388,23 @@
                 <h2>Businesses</h2>
                 <div>
                     <a href="/api/businesses/export/csv" class="scan-btn" style="text-decoration:none;background:#475569;margin-right:8px">Export CSV</a>
+                    <button class="scan-btn" id="enrichBtn" onclick="startEnrichment()" style="background:#7c3aed;margin-right:8px">Enrich Contacts</button>
                     <button class="scan-btn" onclick="startScan()">Run Directory Scan</button>
                 </div>
+            </div>
+            <div class="scan-progress" id="enrichProgress" style="display:none;background:#2e1065;border-color:#7c3aed">
+                <div class="progress-header">
+                    <span class="status-text" id="enrichStatus">Enriching contacts...</span>
+                    <span class="elapsed" id="enrichElapsed">0s</span>
+                </div>
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="enrichBar" style="width:0%;background:#a855f7"></div>
+                </div>
+                <div class="progress-details">
+                    <div class="detail-item"><span id="enrichCount">0 / 0 businesses</span></div>
+                    <div class="detail-item"><span id="enrichEmailsFound">0 emails found</span></div>
+                </div>
+                <div id="enrichErrors" style="margin-top:10px;display:none;font-size:11px;color:#fca5a5"></div>
             </div>
             <div class="stats-grid" id="bizStatsGrid">
                 <div class="stat-card"><div class="label">Total Businesses</div><div class="value blue" id="bizStatTotal">-</div></div>
@@ -736,6 +751,69 @@
                 body: JSON.stringify({status}),
             });
             loadBusinesses();
+        }
+
+        async function startEnrichment() {
+            const btn = document.getElementById('enrichBtn');
+            btn.disabled = true;
+            btn.textContent = 'Enriching...';
+            try {
+                const r = await fetch('/api/enrich', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enricher: 'website', only_missing_email: true}),
+                });
+                const d = await r.json();
+                if (d.error) { alert(d.error); btn.disabled = false; btn.textContent = 'Enrich Contacts'; return; }
+                document.getElementById('enrichProgress').style.display = 'block';
+                pollEnrichment();
+            } catch (e) {
+                alert('Failed to start enrichment: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = 'Enrich Contacts';
+            }
+        }
+
+        async function pollEnrichment() {
+            try {
+                const r = await fetch('/api/enrich/status');
+                const d = await r.json();
+                const p = d.progress || {};
+                const total = p.businesses_total || 0;
+                const done  = p.businesses_done  || 0;
+                const pct   = total ? Math.round((done / total) * 100) : 0;
+
+                document.getElementById('enrichStatus').textContent =
+                    p.status === 'complete' ? `Done — ${p.emails_found || 0} emails found` :
+                    `Enriching contacts... (${pct}%)`;
+                document.getElementById('enrichElapsed').textContent  = `${p.elapsed_seconds || 0}s`;
+                document.getElementById('enrichBar').style.width      = `${pct}%`;
+                document.getElementById('enrichCount').textContent    = `${done} / ${total} businesses`;
+                document.getElementById('enrichEmailsFound').textContent = `${p.emails_found || 0} emails found`;
+
+                const errBox = document.getElementById('enrichErrors');
+                if (p.errors && p.errors.length) {
+                    errBox.style.display = 'block';
+                    errBox.innerHTML = p.errors.slice(-5).map(e => `&#9888; ${e}`).join('<br>');
+                } else {
+                    errBox.style.display = 'none';
+                }
+
+                if (d.is_enriching) {
+                    setTimeout(pollEnrichment, 1500);
+                } else {
+                    const btn = document.getElementById('enrichBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Enrich Contacts';
+                    loadBusinesses();  // refresh table to show new emails
+                    setTimeout(() => {
+                        document.getElementById('enrichProgress').style.display = 'none';
+                    }, 5000);
+                }
+            } catch (e) {
+                console.error('poll error', e);
+                setTimeout(pollEnrichment, 3000);
+            }
         }
 
         async function draftOutreach(id) {

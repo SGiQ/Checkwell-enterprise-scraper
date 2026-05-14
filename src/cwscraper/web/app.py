@@ -458,6 +458,40 @@ def create_app() -> Flask:
             download_name=f"cwscraper_businesses_{datetime.now().strftime('%Y%m%d')}.csv",
         )
 
+    # ----------------------- enrichment ------------------------------------
+    @app.route("/api/enrich", methods=["POST"])
+    def api_enrich():
+        if engine.is_enriching:
+            return jsonify({"error": "Enrichment already in progress"}), 409
+        data = request.get_json(silent=True) or {}
+        enricher = data.get("enricher", "website")
+        only_missing = data.get("only_missing_email", True)
+        limit = data.get("limit")
+        if limit is not None:
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                return jsonify({"error": "limit must be an integer"}), 400
+
+        threading.Thread(
+            target=engine.run_enrichment,
+            kwargs={
+                "enricher_slug": enricher,
+                "only_missing_email": bool(only_missing),
+                "limit": limit,
+            },
+            daemon=True,
+        ).start()
+        return jsonify({"status": "started"})
+
+    @app.route("/api/enrich/status")
+    def api_enrich_status():
+        return jsonify({
+            "is_enriching": engine.is_enriching,
+            "progress": engine.enrichment_progress,
+            "last_enrichment": engine.last_enrichment,
+        })
+
     # ----------------------- outreach (cold email drafts) ------------------
     @app.route("/api/outreach/draft", methods=["POST"])
     def api_outreach_draft():
