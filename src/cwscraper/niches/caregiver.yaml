@@ -1,0 +1,169 @@
+slug: caregiver
+display_name: Caregiver & Aging Parents
+description: |
+  Identifies adult children and family caregivers researching solutions for
+  aging parents — wellness checks, remote caregiving, aging in place.
+  Ships pre-tuned for CheckWellCall but suitable for any senior-care vendor.
+
+# --- Intent scoring ---
+high_intent_keywords:
+  - wellness check
+  - daily check in
+  - daily check-in
+  - check on my mom
+  - check on my dad
+  - check on my parent
+  - check on my mother
+  - check on my father
+  - lives alone
+  - living alone
+  - long distance caregiv
+  - remote caregiv
+  - worried about my mom
+  - worried about my dad
+  - worried about my parent
+  - falls at home
+  - fall detection
+  - aging in place
+  - daily phone call
+  - call every day
+  - someone to call
+  - who can check
+
+medium_intent_keywords:
+  - aging parent
+  - elderly parent
+  - caregiver burnout
+  - caregiver stress
+  - sandwich generation
+  - parent with dementia
+  - assisted living alternative
+  - nursing home alternative
+  - home safety elderly
+  - parent refuses help
+  - stubborn parent
+  - independent senior
+  - aging mother
+  - aging father
+  - elderly mom
+  - elderly dad
+
+# --- Reddit sources ---
+subreddits:
+  - { name: AgingParents,       category: primary,    enabled: true }
+  - { name: CaregiverSupport,   category: primary,    enabled: true }
+  - { name: Caregiver,          category: primary,    enabled: true }
+  - { name: eldercare,          category: primary,    enabled: true }
+  - { name: Alzheimers,         category: condition,  enabled: true }
+  - { name: dementia,           category: condition,  enabled: true }
+  - { name: sandwichgeneration, category: demographic, enabled: true }
+  - { name: Parkinsons,         category: condition,  enabled: true }
+  - { name: stroke,             category: condition,  enabled: true }
+  - { name: seniors,            category: general,    enabled: false }
+  - { name: retirement,         category: general,    enabled: false }
+  - { name: personalfinance,    category: general,    enabled: false }
+  - { name: legaladvice,        category: general,    enabled: false }
+
+# --- YouTube search queries (used when YOUTUBE_API_KEY is set) ---
+youtube_queries:
+  - aging parents living alone
+  - daily wellness check elderly
+  - long distance caregiving tips
+  - how to check on elderly parent
+  - caregiver burnout help
+  - aging in place safety
+
+# --- YouTube RSS fallback channels ---
+youtube_channels:
+  - { name: "Teepa Snow - Positive Approach to Care", id: "UCsFa5OUxmB6LD4e2dJLm4aQ" }
+  - { name: "Caregiver Action Network",              id: "UC9-y-6csu5WGm29I7JiwpnA" }
+  - { name: "AARP",                                  id: "UCbhMDG67yEe1ud1FZ95TPPA" }
+
+# --- HackerNews Algolia search queries ---
+hackernews_queries:
+  - aging parents
+  - elderly parent alone
+  - caregiver technology
+  - aging in place
+  - wellness check parent
+
+# --- Reply drafting templates ---
+# Triggers are substring matches against the lead's title + preview;
+# first matching template wins. Placeholders: {parent}, {parent_name}.
+default_reply_template: general_helpful
+
+reply_templates:
+  - key: lives_alone
+    name: Parent Lives Alone
+    triggers: [lives alone, living alone]
+    template: |
+      This is such a common worry, and a valid one. When my {parent} started living alone, here's what we put in place:
+
+      1. **Daily check-in call** - Either from family or a wellness check service. This was the #1 thing that helped
+      2. **Medical alert device** - So {parent} can call for help if they fall
+      3. **Simplified the home** - Removed trip hazards, added grab bars, better lighting
+      4. **Meal delivery** - One less thing to worry about
+
+      The daily call was the game-changer because it wasn't just safety - {parent} looked forward to it. It became part of their routine and we could catch any changes in mood or health early.
+
+      Happy to share more details on any of these if helpful.
+
+  - key: long_distance
+    name: Long-Distance Caregiver
+    triggers: [long distance, remote caregiv]
+    template: |
+      Long-distance caregiving is one of the hardest situations - I've been there.
+
+      Here's what made the biggest difference for us:
+
+      - **Daily wellness check calls** - Having someone call {parent} every day and report back gave us so much peace of mind. There are affordable services that do this professionally.
+      - **Local support network** - We connected with a neighbor who could check in physically when needed
+      - **Technology** - Video calls, medication reminders, and fall detection devices helped bridge the distance
+
+      The guilt of not being there physically never fully goes away, but knowing someone is checking in daily made it manageable. Feel free to DM me if you want more specifics on what worked for us.
+
+  - key: caregiver_burnout
+    name: Caregiver Burnout
+    triggers: [burnout, stress, exhausted, overwhelmed]
+    template: |
+      I hear you, and please know you're not alone in feeling this way. Caregiver burnout is real and it doesn't mean you're failing.
+
+      Things that helped me step back from the edge:
+
+      - **Automate what you can** - Daily wellness check services can handle the "is {parent} okay today?" question so it's not always on you
+      - **Accept help** - Even if it's imperfect. A neighbor checking in, a meal delivery service, anything that takes one thing off your plate
+      - **Take actual breaks** - Not "breaks where you're still worrying." Knowing someone else is monitoring {parent}'s daily wellbeing made it possible for me to actually rest
+      - **Talk to someone** - Caregiver support groups (like this one) are a lifeline
+
+      You're doing more than you realize. Take care of yourself too.
+
+  - key: wellness_check
+    name: Wellness Check Suggestion
+    triggers: [wellness check, daily check, daily call, someone to call]
+    template: |
+      I completely understand that worry - it's tough when you can't be there every day.
+
+      A few things that helped me in a similar situation:
+
+      1. **Set up a daily check-in routine** - even a quick morning call can make a huge difference for peace of mind
+      2. **Look into wellness check call services** - there are services that will call your {parent} daily and alert you if something seems off or if they don't answer
+      3. **Consider simple tech** - a medical alert button or smart home sensors can add a safety layer
+
+      The daily call option was what worked best for our family because {parent_name} actually enjoyed the social interaction, and we'd get notified if anything was concerning.
+
+      Hang in there - the fact that you're looking into this shows how much you care.
+
+  - key: general_helpful
+    name: General Helpful Reply
+    triggers: []
+    template: |
+      Thanks for sharing this - it's a situation a lot of us are dealing with.
+
+      From my experience, the thing that made the biggest difference was setting up a daily check-in system. Whether it's a family member calling at the same time every day, or using a wellness check service that does it professionally, that daily touchpoint catches problems early and gives everyone peace of mind.
+
+      A few other things worth looking into:
+      - Medical alert systems for emergency situations
+      - Simplified technology (tablets with big buttons for video calls)
+      - Local Area Agency on Aging - they have free resources most people don't know about
+
+      Feel free to reach out if you want to talk through options. This community is great for support.

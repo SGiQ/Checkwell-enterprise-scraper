@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cwscraper"
+version = "0.1.0"
+description = "Enterprise community lead scraper. Pluggable niche packs, multi-platform (Reddit, YouTube, HackerNews), with reply drafting and OAuth posting."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "SGiQ Business Strategies" }]
+license = { text = "Proprietary" }
+keywords = ["lead-generation", "reddit", "scraper", "community-monitoring"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "flask>=3.0",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+prod = [
+    "gunicorn>=21.0",
+]
+
+[project.scripts]
+cwscraper = "cwscraper.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SGiQ/Checkwell-enterprise-scraper"
+Repository = "https://github.com/SGiQ/Checkwell-enterprise-scraper"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cwscraper"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"src/cwscraper/niches" = "cwscraper/niches"
+"src/cwscraper/web/templates" = "cwscraper/web/templates"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

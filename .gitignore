@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets + local data
+.env
+.env.*
+!.env.example
+
+# Runtime data (per-install, never commit)
+/data/
+/instance/
+*.db
+*.sqlite
+*.sqlite3
+src/cwscraper/data/
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,411 @@
+"""Flask app — wires Repository, NichePack, ScanEngine, RedditOAuth into HTTP routes."""
+from __future__ import annotations
+
+import csv
+import io
+import logging
+import os
+import secrets
+import threading
+import webbrowser
+from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
+
+from flask import Flask, jsonify, redirect, render_template, request, send_file, session
+
+from cwscraper import __version__
+from cwscraper.core.engine import ScanEngine
+from cwscraper.core.niche import load_niche
+from cwscraper.core.scheduler import AutoScanner
+from cwscraper.core.store import JSONRepository
+from cwscraper.replies import RedditOAuth, draft_reply, post_reddit_comment
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("cwscraper.web")
+
+
+def create_app() -> Flask:
+    app = Flask(__name__, template_folder="templates")
+    app.secret_key = os.getenv("CWSCRAPER_SECRET", "cwscraper-dev-secret-change-me")
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+
+    repo = JSONRepository()
+    niche = load_niche()
+    engine = ScanEngine(repo, niche)
+    scheduler = AutoScanner(engine, repo)
+    reddit_oauth = RedditOAuth(repo)
+
+    if repo.get_config().get("auto_scan_enabled"):
+        scheduler.start()
+
+    app.extensions["cwscraper"] = {
+        "repo": repo,
+        "niche": niche,
+        "engine": engine,
+        "scheduler": scheduler,
+        "reddit_oauth": reddit_oauth,
+    }
+
+    # ----------------------- no-cache for dev/admin -------------------------
+    @app.after_request
+    def _no_cache(resp):
+        if resp.content_type and (
+            "text/html" in resp.content_type or "application/json" in resp.content_type
+        ):
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            resp.headers["Pragma"] = "no-cache"
+            resp.headers["Expires"] = "0"
+        return resp
+
+    # ----------------------- core pages -------------------------------------
+    @app.route("/")
+    def dashboard():
+        return render_template("dashboard.html", niche=niche, version=__version__)
+
+    @app.route("/api/health")
+    def api_health():
+        return jsonify({"ok": True, "version": __version__, "niche": niche.slug})
+
+    # ----------------------- stats ------------------------------------------
+    @app.route("/api/stats")
+    def api_stats():
+        leads = _back_compat_leads(repo.get_leads())
+        now = datetime.now(timezone.utc)
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_ago = now - timedelta(days=7)
+
+        high = sum(1 for l in leads if l.get("intent_level") == "high")
+        medium = sum(1 for l in leads if l.get("intent_level") == "medium")
+        new_count = sum(1 for l in leads if l.get("status") == "new")
+        reviewed = sum(1 for l in leads if l.get("status") == "reviewed")
+        contacted = sum(1 for l in leads if l.get("status") == "contacted")
+        today_leads = sum(
+            1 for l in leads if l.get("discovered_at", "")[:10] == today.strftime("%Y-%m-%d")
+        )
+
+        week_leads = 0
+        for l in leads:
+            try:
+                d = datetime.fromisoformat(l.get("discovered_at", "").replace("Z", "+00:00"))
+                if d >= week_ago:
+                    week_leads += 1
+            except (ValueError, TypeError):
+                pass
+
+        by_sub: dict[str, int] = {}
+        by_platform: dict[str, int] = {}
+        for l in leads:
+            s = l.get("subreddit", "unknown")
+            by_sub[s] = by_sub.get(s, 0) + 1
+            p = l.get("platform", "reddit")
+            by_platform[p] = by_platform.get(p, 0) + 1
+
+        kw_counts: dict[str, int] = {}
+        for l in leads:
+            for kw in l.get("matched_keywords", []):
+                kw_counts[kw] = kw_counts.get(kw, 0) + 1
+        top_keywords = sorted(kw_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+
+        logs = repo.get_scan_logs()
+        return jsonify({
+            "total_leads": len(leads),
+            "high_intent": high,
+            "medium_intent": medium,
+            "new": new_count,
+            "reviewed": reviewed,
+            "contacted": contacted,
+            "today": today_leads,
+            "this_week": week_leads,
+            "by_subreddit": dict(sorted(by_sub.items(), key=lambda x: x[1], reverse=True)),
+            "by_platform": dict(sorted(by_platform.items(), key=lambda x: x[1], reverse=True)),
+            "top_keywords": top_keywords,
+            "last_scan": logs[0] if logs else None,
+            "is_scanning": engine.is_scanning,
+            "total_scans": len(logs),
+        })
+
+    # ----------------------- leads ------------------------------------------
+    @app.route("/api/leads")
+    def api_leads():
+        leads = _back_compat_leads(repo.get_leads())
+        intent = request.args.get("intent")
+        status = request.args.get("status")
+        source = request.args.get("subreddit") or request.args.get("source")
+        search = request.args.get("search", "").lower()
+
+        if intent:
+            leads = [l for l in leads if l.get("intent_level") == intent]
+        if status:
+            leads = [l for l in leads if l.get("status") == status]
+        if source:
+            leads = [l for l in leads if l.get("subreddit") == source]
+        if search:
+            leads = [
+                l for l in leads
+                if search in l.get("title", "").lower()
+                or search in l.get("selftext_preview", "").lower()
+            ]
+        leads.sort(key=lambda x: x.get("discovered_at", ""), reverse=True)
+
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 25))
+        start = (page - 1) * per_page
+        return jsonify({
+            "leads": leads[start:start + per_page],
+            "total": len(leads),
+            "page": page,
+            "per_page": per_page,
+            "pages": (len(leads) + per_page - 1) // per_page,
+        })
+
+    @app.route("/api/leads/<lead_id>/status", methods=["POST"])
+    def api_update_lead_status(lead_id):
+        data = request.get_json() or {}
+        status = data.get("status")
+        if status not in ("new", "reviewed", "contacted", "dismissed"):
+            return jsonify({"error": "Invalid status"}), 400
+        repo.update_lead_status(lead_id, status)
+        return jsonify({"ok": True})
+
+    # ----------------------- scanning ---------------------------------------
+    @app.route("/api/scan", methods=["POST"])
+    def api_scan():
+        if engine.is_scanning:
+            return jsonify({"error": "Scan already in progress"}), 409
+        threading.Thread(target=engine.run_full_scan, daemon=True).start()
+        return jsonify({"status": "started"})
+
+    @app.route("/api/scan/status")
+    def api_scan_status():
+        return jsonify({
+            "is_scanning": engine.is_scanning,
+            "last_scan": engine.last_scan,
+            "progress": engine.progress,
+        })
+
+    @app.route("/api/discover", methods=["POST"])
+    def api_discover():
+        if engine.is_scanning:
+            return jsonify({"error": "Scanner is busy"}), 409
+        from cwscraper.scanners.base import ScannerContext
+        from cwscraper.scanners.reddit import RedditScanner
+
+        rs = RedditScanner(niche)
+        # Use the niche's first 5 medium-intent keywords as discovery queries
+        queries = niche.medium_intent_keywords[:5] or ["caregiver"]
+        ctx = ScannerContext()
+        return jsonify({"subreddits": rs.discover_subreddits(queries, ctx)})
+
+    # ----------------------- config -----------------------------------------
+    @app.route("/api/config", methods=["GET"])
+    def api_get_config():
+        cfg = repo.get_config()
+        # back-compat keys the existing dashboard reads
+        cfg.setdefault("subreddits", [asdict(s) for s in niche.subreddits])
+        cfg.setdefault("quora_enabled", False)
+        cfg.setdefault("agingcare_enabled", False)
+        return jsonify(cfg)
+
+    @app.route("/api/config", methods=["POST"])
+    def api_save_config():
+        data = request.get_json() or {}
+        cfg = repo.get_config()
+        cfg.update(data)
+        repo.save_config(cfg)
+        if cfg.get("auto_scan_enabled"):
+            scheduler.start()
+        else:
+            scheduler.stop()
+        return jsonify({"ok": True})
+
+    @app.route("/api/directory")
+    def api_directory():
+        return jsonify({
+            "reddit": [
+                {
+                    "name": s.name,
+                    "category": s.category,
+                    "enabled": s.enabled,
+                    "url": f"https://reddit.com/r/{s.name}",
+                    "platform": "Reddit",
+                }
+                for s in niche.subreddits
+            ],
+            "facebook": [],
+            "other": [],
+        })
+
+    @app.route("/api/scan-logs")
+    def api_scan_logs():
+        return jsonify(repo.get_scan_logs()[:50])
+
+    # ----------------------- export -----------------------------------------
+    @app.route("/api/export/csv")
+    def api_export_csv():
+        leads = _back_compat_leads(repo.get_leads())
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=[
+                "id", "subreddit", "title", "url", "score", "num_comments",
+                "intent_level", "matched_keywords", "status", "discovered_at",
+            ],
+        )
+        writer.writeheader()
+        for lead in leads:
+            row = {k: lead.get(k, "") for k in writer.fieldnames}
+            row["matched_keywords"] = ", ".join(lead.get("matched_keywords", []))
+            writer.writerow(row)
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode()),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"cwscraper_leads_{datetime.now().strftime('%Y%m%d')}.csv",
+        )
+
+    # ----------------------- replies ----------------------------------------
+    @app.route("/api/replies")
+    def api_replies():
+        replies = repo.get_replies()
+        status_filter = request.args.get("status")
+        if status_filter:
+            replies = [r for r in replies if r.get("status") == status_filter]
+        return jsonify({"replies": replies})
+
+    @app.route("/api/replies/draft", methods=["POST"])
+    def api_generate_draft():
+        data = request.get_json() or {}
+        lead_id = data.get("lead_id")
+        lead = next((l for l in repo.get_leads() if l.get("id") == lead_id), None)
+        if not lead:
+            return jsonify({"error": "Lead not found"}), 404
+        draft = draft_reply(lead, niche)
+        repo.save_reply(draft)
+        return jsonify(draft)
+
+    @app.route("/api/replies/save", methods=["POST"])
+    def api_save_edited_draft():
+        data = request.get_json() or {}
+        lead_id = data.get("lead_id")
+        edited = data.get("draft_text")
+        if not lead_id or not edited:
+            return jsonify({"error": "lead_id and draft_text required"}), 400
+        existing = next((r for r in repo.get_replies() if r.get("lead_id") == lead_id), None)
+        if existing:
+            existing["draft_text"] = edited
+            repo.save_reply(existing)
+        else:
+            repo.save_reply({
+                "lead_id": lead_id,
+                "draft_text": edited,
+                "template_used": "custom",
+                "template_name": "Custom",
+            })
+        return jsonify({"ok": True})
+
+    @app.route("/api/replies/send", methods=["POST"])
+    def api_send_reply():
+        data = request.get_json() or {}
+        lead_id = data.get("lead_id")
+        text = data.get("text")
+        if not lead_id or not text:
+            return jsonify({"error": "lead_id and text required"}), 400
+        lead = next((l for l in repo.get_leads() if l.get("id") == lead_id), None)
+        if not lead:
+            return jsonify({"error": "Lead not found"}), 404
+        result = post_reddit_comment(reddit_oauth, lead["url"], text)
+        if result.get("success"):
+            repo.update_reply_status(lead_id, "sent")
+            repo.update_lead_status(lead_id, "contacted")
+            return jsonify({"ok": True, "message": "Reply posted to Reddit"})
+        return jsonify({"error": result.get("error", "Unknown error")}), 400
+
+    @app.route("/api/replies/open", methods=["POST"])
+    def api_open_in_browser():
+        data = request.get_json() or {}
+        url = data.get("url")
+        if url:
+            webbrowser.open(url)
+            return jsonify({"ok": True})
+        return jsonify({"error": "No URL"}), 400
+
+    @app.route("/api/replies/templates")
+    def api_reply_templates():
+        return jsonify({
+            t.key: {"name": t.name, "template": t.template}
+            for t in niche.reply_templates
+        })
+
+    # ----------------------- Reddit OAuth -----------------------------------
+    @app.route("/auth/reddit")
+    def reddit_auth():
+        if not reddit_oauth.configured:
+            return jsonify({
+                "error": "REDDIT_CLIENT_ID/SECRET not set. See .env.example."
+            }), 400
+        state = secrets.token_urlsafe(32)
+        session["reddit_oauth_state"] = state
+        return redirect(reddit_oauth.authorize_url(state))
+
+    @app.route("/auth/reddit/callback")
+    def reddit_callback():
+        if request.args.get("error"):
+            return f"Reddit auth error: {request.args['error']}", 400
+        if request.args.get("state") != session.get("reddit_oauth_state"):
+            return "Invalid state parameter", 400
+        code = request.args.get("code")
+        if not code:
+            return "No authorization code", 400
+        if not reddit_oauth.exchange_code(code):
+            return "Token exchange failed", 400
+        return redirect("/?tab=replies&auth=success")
+
+    @app.route("/api/auth/reddit/status")
+    def api_reddit_status():
+        cfg = repo.get_config()
+        token = cfg.get("reddit_access_token")
+        connected = bool(token and reddit_oauth.current_token())
+        return jsonify({
+            "connected": connected,
+            "username": cfg.get("reddit_username", "") if connected else "",
+            "has_credentials": reddit_oauth.configured,
+        })
+
+    @app.route("/api/auth/reddit/disconnect", methods=["POST"])
+    def api_reddit_disconnect():
+        reddit_oauth.disconnect()
+        return jsonify({"ok": True})
+
+    return app
+
+
+def _back_compat_leads(leads: list[dict]) -> list[dict]:
+    """Old dashboard expects `subreddit` field; new model uses `source`.
+
+    Map source -> subreddit so the existing HTML works unmodified.
+    """
+    for l in leads:
+        if "subreddit" not in l:
+            src = l.get("source", "")
+            # 'r/AgingParents' -> 'AgingParents'
+            l["subreddit"] = src[2:] if src.startswith("r/") else src
+    return leads
+
+
+# WSGI entrypoint
+app = create_app()
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("CWSCRAPER_PORT", "5050"))
+    host = os.getenv("CWSCRAPER_HOST", "0.0.0.0")
+    cwscraper_ctx = app.extensions["cwscraper"]
+    print(f"\n  CheckWell Enterprise Scraper v{__version__}")
+    print(f"  Niche pack: {cwscraper_ctx['niche'].display_name}")
+    print(f"  Dashboard:  http://localhost:{port}\n")
+    app.run(host=host, port=port, debug=True)

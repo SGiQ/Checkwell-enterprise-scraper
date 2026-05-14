@@ -1,0 +1,10 @@
+services:
+  cwscraper:
+    build: .
+    ports:
+      - "5050:5050"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

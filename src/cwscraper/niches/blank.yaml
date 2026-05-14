@@ -1,0 +1,24 @@
+slug: blank
+display_name: Blank Niche Pack
+description: |
+  Starter template for a custom vertical. Copy to <your-slug>.yaml,
+  fill in keywords + sources, then run with CWSCRAPER_NICHE=<your-slug>.
+
+high_intent_keywords: []
+medium_intent_keywords: []
+
+subreddits: []
+
+youtube_queries: []
+youtube_channels: []
+
+hackernews_queries: []
+
+default_reply_template: general_helpful
+
+reply_templates:
+  - key: general_helpful
+    name: General Helpful Reply
+    triggers: []
+    template: |
+      Replace this with a helpful reply for your vertical.
