@@ -13,7 +13,6 @@ COPY src ./src
 RUN pip install --upgrade pip && pip install .[prod]
 
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 EXPOSE 5050
 
