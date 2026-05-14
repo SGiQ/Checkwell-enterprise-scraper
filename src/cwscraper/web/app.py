@@ -15,6 +15,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 
 from cwscraper import __version__
 from cwscraper.core.engine import ScanEngine
+from cwscraper.core.models import PIPELINE_STAGE_LABELS, PIPELINE_STAGES
 from cwscraper.core.niche import load_niche
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
@@ -457,6 +458,157 @@ def create_app() -> Flask:
             as_attachment=True,
             download_name=f"cwscraper_businesses_{datetime.now().strftime('%Y%m%d')}.csv",
         )
+
+    # ----------------------- pipeline / CRM-lite ---------------------------
+    @app.route("/api/pipeline/config")
+    def api_pipeline_config():
+        return jsonify({
+            "stages": list(PIPELINE_STAGES),
+            "stage_labels": PIPELINE_STAGE_LABELS,
+        })
+
+    @app.route("/api/prospects")
+    def api_prospects():
+        """Unified list spanning leads + businesses, optional stage/tag/type filters."""
+        prospects = repo.get_all_prospects()
+        stage = request.args.get("stage")
+        tag = request.args.get("tag")
+        lead_type = request.args.get("lead_type")
+        search = request.args.get("search", "").lower()
+        overdue_only = request.args.get("overdue") in ("1", "true")
+
+        if stage:
+            prospects = [p for p in prospects if p.get("pipeline_stage") == stage]
+        if tag:
+            prospects = [p for p in prospects if tag in (p.get("tags") or [])]
+        if lead_type:
+            prospects = [p for p in prospects if p.get("lead_type") == lead_type]
+        if search:
+            def _hay(p):
+                return " ".join([
+                    p.get("title", ""), p.get("name", ""),
+                    p.get("notes", ""), p.get("source", ""),
+                ]).lower()
+            prospects = [p for p in prospects if search in _hay(p)]
+        if overdue_only:
+            today = datetime.now(timezone.utc).date().isoformat()
+            prospects = [
+                p for p in prospects
+                if p.get("follow_up_date") and p["follow_up_date"] <= today
+                and p.get("pipeline_stage") not in ("customer", "lost")
+            ]
+
+        # Sort: overdue follow-ups first, then by stage order, then newest discovered.
+        # Python's sort is stable, so apply secondary criterion (newest first) then primary.
+        stage_order = {s: i for i, s in enumerate(PIPELINE_STAGES)}
+        today_str = datetime.now(timezone.utc).date().isoformat()
+
+        def _is_overdue(p):
+            return bool(
+                p.get("follow_up_date")
+                and p["follow_up_date"] <= today_str
+                and p.get("pipeline_stage") not in ("customer", "lost")
+            )
+
+        prospects.sort(key=lambda p: p.get("discovered_at", ""), reverse=True)
+        prospects.sort(key=lambda p: (
+            0 if _is_overdue(p) else 1,
+            stage_order.get(p.get("pipeline_stage", "new"), 99),
+        ))
+        return jsonify({"prospects": prospects, "total": len(prospects)})
+
+    @app.route("/api/pipeline/stats")
+    def api_pipeline_stats():
+        prospects = repo.get_all_prospects()
+        by_stage = {s: 0 for s in PIPELINE_STAGES}
+        community = business = 0
+        today = datetime.now(timezone.utc).date().isoformat()
+        overdue = 0
+        for p in prospects:
+            stage = p.get("pipeline_stage", "new")
+            by_stage[stage] = by_stage.get(stage, 0) + 1
+            if p.get("lead_type") == "community":
+                community += 1
+            else:
+                business += 1
+            if (p.get("follow_up_date") and p["follow_up_date"] <= today
+                    and stage not in ("customer", "lost")):
+                overdue += 1
+        return jsonify({
+            "total": len(prospects),
+            "community": community,
+            "business": business,
+            "overdue_follow_ups": overdue,
+            "by_stage": by_stage,
+            "stage_labels": PIPELINE_STAGE_LABELS,
+        })
+
+    @app.route("/api/prospects/<prospect_id>/stage", methods=["POST"])
+    def api_set_stage(prospect_id):
+        data = request.get_json() or {}
+        stage = data.get("stage")
+        lead_type = data.get("lead_type", "business")
+        if stage not in PIPELINE_STAGES:
+            return jsonify({"error": f"Invalid stage. Must be one of: {list(PIPELINE_STAGES)}"}), 400
+        result = repo.update_prospect(
+            prospect_id, lead_type, {"pipeline_stage": stage}, action="stage_change"
+        )
+        if not result:
+            return jsonify({"error": "Prospect not found"}), 404
+        return jsonify({"ok": True, "prospect": result})
+
+    @app.route("/api/prospects/<prospect_id>/notes", methods=["POST"])
+    def api_set_notes(prospect_id):
+        data = request.get_json() or {}
+        notes = data.get("notes", "")
+        lead_type = data.get("lead_type", "business")
+        result = repo.update_prospect(
+            prospect_id, lead_type, {"notes": notes}, action="notes_updated"
+        )
+        if not result:
+            return jsonify({"error": "Prospect not found"}), 404
+        return jsonify({"ok": True})
+
+    @app.route("/api/prospects/<prospect_id>/follow-up", methods=["POST"])
+    def api_set_follow_up(prospect_id):
+        data = request.get_json() or {}
+        follow_up = data.get("follow_up_date", "")
+        lead_type = data.get("lead_type", "business")
+        # Validate ISO date if provided
+        if follow_up:
+            try:
+                datetime.strptime(follow_up, "%Y-%m-%d")
+            except ValueError:
+                return jsonify({"error": "follow_up_date must be YYYY-MM-DD"}), 400
+        result = repo.update_prospect(
+            prospect_id, lead_type, {"follow_up_date": follow_up}, action="follow_up_set"
+        )
+        if not result:
+            return jsonify({"error": "Prospect not found"}), 404
+        return jsonify({"ok": True})
+
+    @app.route("/api/prospects/<prospect_id>/tags", methods=["POST"])
+    def api_set_tags(prospect_id):
+        data = request.get_json() or {}
+        tags = data.get("tags")
+        lead_type = data.get("lead_type", "business")
+        if not isinstance(tags, list):
+            return jsonify({"error": "tags must be an array of strings"}), 400
+        cleaned = sorted({str(t).strip().lower() for t in tags if str(t).strip()})
+        result = repo.update_prospect(
+            prospect_id, lead_type, {"tags": cleaned}, action="tags_updated"
+        )
+        if not result:
+            return jsonify({"error": "Prospect not found"}), 404
+        return jsonify({"ok": True, "tags": cleaned})
+
+    @app.route("/api/prospects/<prospect_id>")
+    def api_get_prospect(prospect_id):
+        """Return a single prospect with full activity log."""
+        for p in repo.get_all_prospects():
+            if p.get("id") == prospect_id:
+                return jsonify(p)
+        return jsonify({"error": "Prospect not found"}), 404
 
     # ----------------------- enrichment ------------------------------------
     @app.route("/api/enrich", methods=["POST"])

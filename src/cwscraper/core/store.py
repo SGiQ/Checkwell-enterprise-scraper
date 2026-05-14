@@ -13,7 +13,47 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Protocol
 
-from cwscraper.core.models import BusinessLead, Lead
+from cwscraper.core.models import (
+    LEGACY_STATUS_TO_STAGE,
+    PIPELINE_STAGES,
+    BusinessLead,
+    Lead,
+)
+
+
+def _ensure_pipeline_fields(row: dict) -> None:
+    """Backfill new pipeline fields on rows from older versions of the file.
+
+    Maps legacy `status` (new/reviewed/qualified/contacted/dismissed) onto
+    the new `pipeline_stage` if the row hasn't been touched yet.
+    """
+    if "pipeline_stage" not in row or not row.get("pipeline_stage"):
+        legacy = (row.get("status") or "new").lower()
+        row["pipeline_stage"] = LEGACY_STATUS_TO_STAGE.get(legacy, "new")
+    row.setdefault("notes", "")
+    row.setdefault("follow_up_date", "")
+    row.setdefault("tags", [])
+    row.setdefault("activity_log", [])
+
+
+def _diff_summary(row: dict, patch: dict) -> str:
+    """Produce a short human-readable description of what changed."""
+    parts: list[str] = []
+    for key, new_val in patch.items():
+        old_val = row.get(key)
+        if old_val == new_val:
+            continue
+        if key == "pipeline_stage":
+            parts.append(f"{old_val or 'new'} -> {new_val}")
+        elif key == "tags":
+            parts.append(f"tags={new_val}")
+        elif key == "follow_up_date":
+            parts.append(f"follow_up={new_val or 'cleared'}")
+        elif key == "notes":
+            parts.append("notes updated")
+        else:
+            parts.append(f"{key}={new_val}")
+    return "; ".join(parts) if parts else "no-op"
 
 
 def _data_dir() -> Path:
@@ -45,6 +85,12 @@ class Repository(Protocol):
     def add_businesses(self, businesses: Iterable[BusinessLead]) -> None: ...
     def update_business_status(self, business_id: str, status: str) -> None: ...
     def update_business(self, business_id: str, patch: dict) -> None: ...
+
+    # --- pipeline (CRM-lite, unified across leads + businesses) ---
+    def get_all_prospects(self) -> list[dict]: ...
+    def update_prospect(
+        self, prospect_id: str, lead_type: str, patch: dict, action: str = ""
+    ) -> dict | None: ...
 
     def get_seen_ids(self) -> set[str]: ...
     def save_seen_ids(self, new_ids: dict[str, float]) -> None: ...
@@ -133,6 +179,53 @@ class JSONRepository:
             self.businesses_file.write_text(
                 json.dumps(businesses, indent=2), encoding="utf-8"
             )
+
+    # --- pipeline / CRM-lite (unified across leads + businesses) ---
+
+    def get_all_prospects(self) -> list[dict]:
+        """Return both lead types in one flat list, tagged with lead_type."""
+        leads = self.get_leads()
+        businesses = self.get_businesses()
+        prospects: list[dict] = []
+        for row in leads:
+            _ensure_pipeline_fields(row)
+            prospects.append({**row, "lead_type": "community"})
+        for row in businesses:
+            _ensure_pipeline_fields(row)
+            prospects.append({**row, "lead_type": "business"})
+        return prospects
+
+    def update_prospect(
+        self,
+        prospect_id: str,
+        lead_type: str,
+        patch: dict,
+        action: str = "",
+    ) -> dict | None:
+        """Patch a community lead or business lead. Appends to activity_log."""
+        with self._lock:
+            file_path = self.leads_file if lead_type == "community" else self.businesses_file
+            if not file_path.exists():
+                return None
+            rows = json.loads(file_path.read_text(encoding="utf-8"))
+            updated: dict | None = None
+            for row in rows:
+                if row.get("id") != prospect_id:
+                    continue
+                _ensure_pipeline_fields(row)
+                if action:
+                    detail = _diff_summary(row, patch)
+                    row["activity_log"] = (row.get("activity_log") or []) + [{
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "action": action,
+                        "detail": detail,
+                    }]
+                row.update(patch)
+                updated = row
+                break
+            if updated is not None:
+                file_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+            return updated
 
     # --- seen IDs (30-day rolling window) ---
     def get_seen_ids(self) -> set[str]:

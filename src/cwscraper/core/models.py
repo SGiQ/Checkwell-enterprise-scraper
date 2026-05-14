@@ -8,6 +8,42 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ---------------------------------------------------------------------------
+# Pipeline (CRM-lite) stages — applies to both Lead and BusinessLead.
+# B2B-flavored language but works for community leads too: a Reddit prospect
+# who DMs you still moves through reply_received -> meeting_booked.
+# ---------------------------------------------------------------------------
+PIPELINE_STAGES = (
+    "new",
+    "qualified",
+    "outreach_sent",
+    "reply_received",
+    "meeting_booked",
+    "customer",
+    "lost",
+)
+
+PIPELINE_STAGE_LABELS = {
+    "new":             "New",
+    "qualified":       "Qualified",
+    "outreach_sent":   "Outreach Sent",
+    "reply_received":  "Reply Received",
+    "meeting_booked":  "Meeting Booked",
+    "customer":        "Customer",
+    "lost":            "Lost",
+}
+
+# Maps legacy `status` values (which already exist on leads + businesses) onto
+# the new pipeline stages. Used on first read of an unmigrated row.
+LEGACY_STATUS_TO_STAGE = {
+    "new":        "new",
+    "reviewed":   "qualified",
+    "qualified":  "qualified",
+    "contacted":  "outreach_sent",
+    "dismissed":  "lost",
+}
+
+
 @dataclass
 class Lead:
     id: str = ""
@@ -23,6 +59,13 @@ class Lead:
     matched_keywords: list[str] = field(default_factory=list)
     discovered_at: str = field(default_factory=_utcnow)
     status: str = "new"
+
+    # --- pipeline / CRM-lite fields ---
+    pipeline_stage: str = "new"
+    notes: str = ""
+    follow_up_date: str = ""                       # ISO date YYYY-MM-DD or empty
+    tags: list[str] = field(default_factory=list)
+    activity_log: list[dict] = field(default_factory=list)  # [{ts, action, detail}]
 
 
 @dataclass
@@ -58,7 +101,14 @@ class BusinessLead:
     # --- discovery metadata ---
     discovered_via: str = ""              # search query that surfaced this business
     discovered_at: str = field(default_factory=_utcnow)
-    status: str = "new"                   # new, qualified, contacted, dismissed
+    status: str = "new"                   # legacy: new, qualified, contacted, dismissed
+
+    # --- pipeline / CRM-lite fields ---
+    pipeline_stage: str = "new"
+    notes: str = ""
+    follow_up_date: str = ""                       # ISO date YYYY-MM-DD or empty
+    tags: list[str] = field(default_factory=list)
+    activity_log: list[dict] = field(default_factory=list)
 
 
 @dataclass

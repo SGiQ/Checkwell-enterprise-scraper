@@ -222,6 +222,10 @@
             <span class="nav-icon">&#127970;</span>
             <span class="nav-text">Businesses</span>
         </div>
+        <div class="nav-item" data-tab="pipeline">
+            <span class="nav-icon">&#128203;</span>
+            <span class="nav-text">Pipeline</span>
+        </div>
         <div class="nav-item" data-tab="history">
             <span class="nav-icon">&#8635;</span>
             <span class="nav-text">Scan History</span>
@@ -446,6 +450,67 @@
             </div>
         </div>
 
+        <!-- Pipeline Tab (CRM-lite, unified across community + business leads) -->
+        <div id="tab-pipeline" class="tab-content">
+            <div class="header">
+                <h2>Pipeline</h2>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <label style="font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:6px">
+                        <input type="checkbox" id="pipelineOverdueOnly" onchange="loadPipeline()"> Overdue only
+                    </label>
+                    <select id="pipelineLeadType" onchange="loadPipeline()" style="padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                        <option value="">All Types</option>
+                        <option value="community">Community</option>
+                        <option value="business">Business</option>
+                    </select>
+                    <input type="text" id="pipelineSearch" placeholder="Search…" oninput="debouncedPipelineSearch()" style="padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;width:180px">
+                </div>
+            </div>
+
+            <div class="stats-grid" id="pipelineStatsGrid">
+                <div class="stat-card"><div class="label">Total Prospects</div><div class="value blue" id="pipelineStatTotal">-</div></div>
+                <div class="stat-card"><div class="label">Community</div><div class="value blue" id="pipelineStatCommunity">-</div></div>
+                <div class="stat-card"><div class="label">Business</div><div class="value blue" id="pipelineStatBusiness">-</div></div>
+                <div class="stat-card"><div class="label">Overdue Follow-ups</div><div class="value high" id="pipelineStatOverdue">-</div><div class="sub">need attention</div></div>
+            </div>
+
+            <div id="pipelineStages"></div>
+
+            <!-- Prospect Detail Drawer -->
+            <div id="prospectDrawer" style="display:none;position:fixed;top:0;right:0;bottom:0;width:480px;max-width:100vw;background:#1e293b;border-left:1px solid #334155;z-index:50;overflow-y:auto;box-shadow:-8px 0 24px rgba(0,0,0,0.4)">
+                <div style="padding:20px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:flex-start">
+                    <div style="flex:1;min-width:0">
+                        <div id="drawerLeadType" style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px"></div>
+                        <h3 id="drawerTitle" style="margin:4px 0;font-size:16px;word-break:break-word"></h3>
+                        <div id="drawerSubtitle" style="font-size:12px;color:#94a3b8"></div>
+                    </div>
+                    <button onclick="closeDrawer()" style="background:transparent;color:#94a3b8;border:0;font-size:24px;cursor:pointer;padding:0 8px">&times;</button>
+                </div>
+                <div style="padding:20px">
+                    <div class="form-group">
+                        <label style="font-size:11px;color:#94a3b8">Stage</label>
+                        <select id="drawerStage" onchange="saveDrawerStage()" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px"></select>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size:11px;color:#94a3b8">Follow-up Date</label>
+                        <input type="date" id="drawerFollowUp" onchange="saveDrawerFollowUp()" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size:11px;color:#94a3b8">Tags <small style="color:#475569">(comma-separated)</small></label>
+                        <input type="text" id="drawerTags" placeholder="e.g. hot-lead, fl-region, returning" onblur="saveDrawerTags()" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-size:11px;color:#94a3b8">Notes</label>
+                        <textarea id="drawerNotes" rows="6" onblur="saveDrawerNotes()" placeholder="Conversation notes, call recap, what came up..." style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px;resize:vertical;font-family:inherit"></textarea>
+                    </div>
+                    <div style="margin-top:16px">
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Activity</div>
+                        <div id="drawerActivity" style="font-size:12px;color:#cbd5e1"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- History Tab -->
         <div id="tab-history" class="tab-content">
             <div class="header"><h2>Scan History</h2></div>
@@ -515,6 +580,7 @@
                 document.getElementById('tab-' + item.dataset.tab).classList.add('active');
                 if (item.dataset.tab === 'leads') loadLeads();
                 if (item.dataset.tab === 'businesses') loadBusinesses();
+                if (item.dataset.tab === 'pipeline') loadPipeline();
                 if (item.dataset.tab === 'replies') loadRepliesTab();
                 if (item.dataset.tab === 'directory') loadDirectory();
                 if (item.dataset.tab === 'history') loadScanLogs();
@@ -839,6 +905,243 @@
 ${d.body}</pre>`);
                 }
             } catch (e) { alert('Draft failed: ' + e.message); }
+        }
+
+        // ---------- Pipeline (CRM-lite) ---------------------------------
+        let pipelineConfig = null;
+        let currentDrawerProspect = null;
+
+        const _stageColors = {
+            new:            '#3b82f6',
+            qualified:      '#22d3ee',
+            outreach_sent:  '#a855f7',
+            reply_received: '#f59e0b',
+            meeting_booked: '#10b981',
+            customer:       '#22c55e',
+            lost:           '#64748b',
+        };
+
+        function _pipelineDebounce(fn, wait) {
+            let t;
+            return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); };
+        }
+        const debouncedPipelineSearch = _pipelineDebounce(() => loadPipeline(), 350);
+
+        function _todayISO() {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+
+        function _isOverdue(p) {
+            return p.follow_up_date && p.follow_up_date <= _todayISO()
+                   && !['customer', 'lost'].includes(p.pipeline_stage);
+        }
+
+        function _prospectTitle(p) {
+            return p.lead_type === 'business' ? (p.name || '(unnamed business)')
+                                              : (p.title || '(untitled post)');
+        }
+        function _prospectSubtitle(p) {
+            if (p.lead_type === 'business') {
+                return `${p.city || ''}${p.city && p.state ? ', ' : ''}${p.state || ''}${p.phone ? ' · ' + p.phone : ''}`;
+            }
+            return `${p.source || p.platform || ''} · ${p.intent_level || 'medium'} intent`;
+        }
+
+        async function loadPipeline() {
+            if (!pipelineConfig) {
+                try {
+                    const r = await fetch('/api/pipeline/config');
+                    pipelineConfig = await r.json();
+                } catch (e) { console.error(e); return; }
+            }
+
+            const search = document.getElementById('pipelineSearch').value;
+            const leadType = document.getElementById('pipelineLeadType').value;
+            const overdueOnly = document.getElementById('pipelineOverdueOnly').checked;
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (leadType) params.set('lead_type', leadType);
+            if (overdueOnly) params.set('overdue', '1');
+
+            try {
+                const [statsR, listR] = await Promise.all([
+                    fetch('/api/pipeline/stats'),
+                    fetch('/api/prospects?' + params),
+                ]);
+                const stats = await statsR.json();
+                const data = await listR.json();
+
+                document.getElementById('pipelineStatTotal').textContent     = stats.total;
+                document.getElementById('pipelineStatCommunity').textContent = stats.community;
+                document.getElementById('pipelineStatBusiness').textContent  = stats.business;
+                document.getElementById('pipelineStatOverdue').textContent   = stats.overdue_follow_ups;
+
+                _renderPipelineStages(data.prospects, stats);
+            } catch (e) { console.error('pipeline load failed', e); }
+        }
+
+        function _renderPipelineStages(prospects, stats) {
+            const stages = pipelineConfig.stages;
+            const labels = pipelineConfig.stage_labels;
+
+            // Group prospects by stage
+            const grouped = {};
+            stages.forEach(s => { grouped[s] = []; });
+            prospects.forEach(p => {
+                const s = p.pipeline_stage || 'new';
+                if (grouped[s]) grouped[s].push(p);
+                else (grouped['new'] = grouped['new'] || []).push(p);
+            });
+
+            const container = document.getElementById('pipelineStages');
+            container.innerHTML = stages.map(stage => {
+                const items = grouped[stage] || [];
+                const color = _stageColors[stage] || '#64748b';
+                const count = stats.by_stage[stage] || 0;
+                const headerCount = items.length === count
+                    ? `${count}`
+                    : `${items.length} / ${count}`;
+                return `
+                <div class="panel" style="margin-bottom:14px;border-left:3px solid ${color}">
+                    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+                        <h3 style="display:flex;align-items:center;gap:10px">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color}"></span>
+                            ${labels[stage]}
+                        </h3>
+                        <span style="color:#94a3b8;font-size:12px">${headerCount}</span>
+                    </div>
+                    <div class="panel-body" style="padding:8px 0">
+                        ${items.length === 0
+                            ? `<div style="text-align:center;color:#475569;padding:12px;font-size:12px">no prospects in this stage</div>`
+                            : items.map(p => _renderProspectCard(p)).join('')
+                        }
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function _renderProspectCard(p) {
+            const overdueDot = _isOverdue(p)
+                ? `<span title="Follow-up overdue: ${p.follow_up_date}" style="color:#fbbf24">&#9888;</span>`
+                : '';
+            const tagsHtml = (p.tags || []).slice(0, 3).map(t =>
+                `<span style="background:#334155;color:#cbd5e1;padding:1px 6px;border-radius:3px;font-size:10px">${t}</span>`
+            ).join(' ');
+            const typeBadge = p.lead_type === 'business'
+                ? `<span style="background:#a855f733;color:#c4b5fd;padding:1px 6px;border-radius:3px;font-size:10px">BIZ</span>`
+                : `<span style="background:#3b82f633;color:#93c5fd;padding:1px 6px;border-radius:3px;font-size:10px">COM</span>`;
+            const followUp = p.follow_up_date
+                ? `<small style="color:${_isOverdue(p) ? '#fbbf24' : '#64748b'}">FU: ${p.follow_up_date}</small>`
+                : '';
+            return `<div onclick="openDrawer('${p.id}', '${p.lead_type}')"
+                style="padding:10px 14px;border-bottom:1px solid #1e293b;cursor:pointer;transition:background 0.1s"
+                onmouseover="this.style.background='#0f172a'"
+                onmouseout="this.style.background=''">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+                    <div style="flex:1;min-width:0">
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+                            ${typeBadge}${overdueDot}
+                            <strong style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_prospectTitle(p)}</strong>
+                        </div>
+                        <small style="color:#94a3b8">${_prospectSubtitle(p)}</small>
+                        ${tagsHtml ? `<div style="margin-top:4px">${tagsHtml}</div>` : ''}
+                    </div>
+                    <div style="text-align:right;flex-shrink:0">
+                        ${followUp}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ---------- Drawer ----------------------------------------------
+        async function openDrawer(prospectId, leadType) {
+            try {
+                const r = await fetch(`/api/prospects/${prospectId}`);
+                const p = await r.json();
+                if (p.error) { alert(p.error); return; }
+                p.lead_type = leadType;  // ensure it's set
+                currentDrawerProspect = p;
+                _renderDrawer(p);
+                document.getElementById('prospectDrawer').style.display = 'block';
+            } catch (e) { alert('Failed to load prospect: ' + e.message); }
+        }
+
+        function closeDrawer() {
+            document.getElementById('prospectDrawer').style.display = 'none';
+            currentDrawerProspect = null;
+        }
+
+        function _renderDrawer(p) {
+            document.getElementById('drawerLeadType').textContent = p.lead_type === 'business' ? 'Business · agency / facility' : 'Community · ' + (p.platform || 'post');
+            document.getElementById('drawerTitle').textContent = _prospectTitle(p);
+            document.getElementById('drawerSubtitle').innerHTML = _prospectSubtitle(p)
+                + (p.url || p.website ? ` · <a href="${p.url || p.website}" target="_blank" style="color:#60a5fa">open ↗</a>` : '');
+
+            const stageSelect = document.getElementById('drawerStage');
+            stageSelect.innerHTML = pipelineConfig.stages.map(s =>
+                `<option value="${s}" ${s === p.pipeline_stage ? 'selected' : ''}>${pipelineConfig.stage_labels[s]}</option>`
+            ).join('');
+
+            document.getElementById('drawerFollowUp').value = p.follow_up_date || '';
+            document.getElementById('drawerTags').value = (p.tags || []).join(', ');
+            document.getElementById('drawerNotes').value = p.notes || '';
+
+            const activity = (p.activity_log || []).slice().reverse();
+            document.getElementById('drawerActivity').innerHTML = activity.length === 0
+                ? '<div style="color:#475569;font-size:11px">no activity yet</div>'
+                : activity.slice(0, 30).map(a => `
+                    <div style="padding:6px 0;border-bottom:1px solid #1e293b">
+                        <div style="font-size:11px;color:#94a3b8">${a.ts.slice(0,16).replace('T',' ')} · ${a.action}</div>
+                        <div style="font-size:12px">${a.detail || ''}</div>
+                    </div>`).join('');
+        }
+
+        async function _patchProspect(field, value, action) {
+            if (!currentDrawerProspect) return;
+            const p = currentDrawerProspect;
+            const body = {lead_type: p.lead_type, [field]: value};
+            const url = `/api/prospects/${p.id}/${action}`;
+            try {
+                const r = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                });
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                p[field] = value;  // optimistic local update
+                showToast('Saved');
+                // Reload activity log without closing the drawer
+                const fresh = await fetch(`/api/prospects/${p.id}`).then(x => x.json());
+                if (!fresh.error) {
+                    fresh.lead_type = p.lead_type;
+                    currentDrawerProspect = fresh;
+                    document.getElementById('drawerActivity').innerHTML =
+                        (fresh.activity_log || []).slice().reverse().slice(0, 30).map(a => `
+                            <div style="padding:6px 0;border-bottom:1px solid #1e293b">
+                                <div style="font-size:11px;color:#94a3b8">${a.ts.slice(0,16).replace('T',' ')} · ${a.action}</div>
+                                <div style="font-size:12px">${a.detail || ''}</div>
+                            </div>`).join('');
+                }
+                // Refresh the pipeline list quietly
+                loadPipeline();
+            } catch (e) { showToast('Save failed: ' + e.message, true); }
+        }
+
+        function saveDrawerStage() {
+            _patchProspect('stage', document.getElementById('drawerStage').value, 'stage');
+        }
+        function saveDrawerFollowUp() {
+            _patchProspect('follow_up_date', document.getElementById('drawerFollowUp').value, 'follow-up');
+        }
+        function saveDrawerTags() {
+            const raw = document.getElementById('drawerTags').value;
+            const tags = raw.split(',').map(t => t.trim()).filter(Boolean);
+            _patchProspect('tags', tags, 'tags');
+        }
+        function saveDrawerNotes() {
+            _patchProspect('notes', document.getElementById('drawerNotes').value, 'notes');
         }
 
         function renderPagination(page, pages, total) {
