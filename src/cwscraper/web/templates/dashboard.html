@@ -428,9 +428,13 @@
         <div id="tab-businesses" class="tab-content">
             <div class="header">
                 <h2>Businesses</h2>
-                <div>
-                    <a href="/api/businesses/export/csv" class="scan-btn" style="text-decoration:none;background:#475569;margin-right:8px">Export CSV</a>
-                    <button class="scan-btn" id="enrichBtn" onclick="startEnrichment()" style="background:#7c3aed;margin-right:8px">Enrich Contacts</button>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <a href="/api/businesses/export/csv" class="scan-btn" style="text-decoration:none;background:#475569">Export CSV</a>
+                    <select id="enricherChoice" onchange="_onEnricherChange()" style="padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;cursor:pointer">
+                        <option value="website">Enricher: Website (fast)</option>
+                        <option value="playwright">Enricher: Playwright (deep, JS-rendered)</option>
+                    </select>
+                    <button class="scan-btn" id="enrichBtn" onclick="startEnrichment()" style="background:#7c3aed">Enrich Contacts</button>
                     <button class="scan-btn" data-requires-mode="directory" onclick="startScan(event)">Run Directory Scan</button>
                 </div>
             </div>
@@ -862,15 +866,23 @@
             loadBusinesses();
         }
 
+        function _onEnricherChange() {
+            const enricher = document.getElementById('enricherChoice').value;
+            if (enricher === 'playwright') {
+                showToast('Playwright is ~5x slower but cracks JS-rendered sites. Plan ~3 min per 50 businesses.');
+            }
+        }
+
         async function startEnrichment() {
+            const enricher = document.getElementById('enricherChoice').value;
             const btn = document.getElementById('enrichBtn');
             btn.disabled = true;
-            btn.textContent = 'Enriching...';
+            btn.textContent = enricher === 'playwright' ? 'Rendering...' : 'Enriching...';
             try {
                 const r = await fetch('/api/enrich', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({enricher: 'website', only_missing_email: true}),
+                    body: JSON.stringify({enricher, only_missing_email: true}),
                 });
                 const d = await r.json();
                 if (d.error) { alert(d.error); btn.disabled = false; btn.textContent = 'Enrich Contacts'; return; }

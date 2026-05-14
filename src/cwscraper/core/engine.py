@@ -20,7 +20,12 @@ from cwscraper.scanners import ALL_DIRECTORY_SCANNERS, ALL_SCANNERS
 from cwscraper.scanners.base import ScannerContext
 from cwscraper.scanners.directory_base import DirectoryContext
 
-ENRICHMENT_WORKERS = 5
+import os
+
+# Default thread pool size for enrichment. Heavy enrichers (Playwright)
+# override via `suggested_workers` on the class. Override globally with
+# CWSCRAPER_ENRICHMENT_WORKERS for low-memory hosts.
+DEFAULT_ENRICHMENT_WORKERS = int(os.getenv("CWSCRAPER_ENRICHMENT_WORKERS", "5"))
 
 
 class ScanEngine:
@@ -229,7 +234,10 @@ class ScanEngine:
                 result = None
             return biz.get("id", ""), result
 
-        with ThreadPoolExecutor(max_workers=ENRICHMENT_WORKERS) as pool:
+        # Heavy enrichers (Playwright) request lower concurrency to keep memory in check.
+        suggested = getattr(enricher, "suggested_workers", None)
+        max_workers = min(suggested or DEFAULT_ENRICHMENT_WORKERS, DEFAULT_ENRICHMENT_WORKERS)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = [pool.submit(_do_one, biz) for biz in candidates]
             for fut in as_completed(futures):
                 biz_id, result = fut.result()

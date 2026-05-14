@@ -731,6 +731,12 @@ def create_app() -> Flask:
             except (TypeError, ValueError):
                 return jsonify({"error": "limit must be an integer"}), 400
 
+        from cwscraper.enrichment import ALL_ENRICHERS
+        if enricher not in ALL_ENRICHERS:
+            return jsonify({
+                "error": f"Unknown enricher '{enricher}'. Available: {sorted(ALL_ENRICHERS)}"
+            }), 400
+
         threading.Thread(
             target=ctx.engine.run_enrichment,
             kwargs={

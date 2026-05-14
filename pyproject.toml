@@ -34,6 +34,11 @@ dev = [
 prod = [
     "gunicorn>=21.0",
 ]
+# Enables the Playwright enricher for JS-rendered sites. Heavy: pulls
+# Chromium (~150 MB) at `playwright install chromium` time.
+playwright = [
+    "playwright>=1.42",
+]
 
 [project.scripts]
 cwscraper = "cwscraper.cli:main"
