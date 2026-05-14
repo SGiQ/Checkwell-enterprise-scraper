@@ -92,6 +92,37 @@ class NichePack:
         return None
 
 
+def list_bundled_niches() -> list[dict]:
+    """Discover every niche pack bundled in cwscraper/niches/*.yaml.
+
+    Returns a small metadata dict per pack (slug, display_name, mode,
+    description). Used by the dashboard dropdown — full pack loading
+    happens only when one is selected.
+    """
+    pkg_files = resources.files("cwscraper.niches")
+    out: list[dict] = []
+    for f in sorted(pkg_files.iterdir()):
+        if not f.name.endswith(".yaml"):
+            continue
+        slug = f.name.removesuffix(".yaml")
+        try:
+            data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            out.append({
+                "slug": slug, "display_name": slug, "mode": "unknown",
+                "description": f"(failed to parse: {e})",
+                "error": str(e),
+            })
+            continue
+        out.append({
+            "slug": data.get("slug", slug),
+            "display_name": data.get("display_name", slug),
+            "mode": data.get("mode", "community"),
+            "description": (data.get("description") or "").strip(),
+        })
+    return out
+
+
 def load_niche(slug: str | None = None) -> NichePack:
     """Load a niche pack by slug.
 

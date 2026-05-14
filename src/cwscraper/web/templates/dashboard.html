@@ -202,6 +202,19 @@
             <h1>Lead Agent</h1>
             <small>CheckWellCall</small>
         </div>
+
+        <!-- Active Niche picker -->
+        <div style="padding:0 16px 14px;border-bottom:1px solid #1e293b;margin-bottom:10px">
+            <label style="display:block;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+                Active Niche Pack
+            </label>
+            <select id="nicheSelect" onchange="switchNiche(this.value)"
+                style="width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;cursor:pointer">
+                <option>Loading…</option>
+            </select>
+            <div id="nicheBadge" style="margin-top:6px;font-size:10px;color:#64748b">&nbsp;</div>
+        </div>
+
         <div class="nav-item active" data-tab="overview">
             <span class="nav-icon">&#9632;</span>
             <span class="nav-text">Overview</span>
@@ -1668,7 +1681,63 @@ ${d.body}</pre>`);
             loadDraftableLeads();
         }
 
+        // ---------- Niche picker ----------------------------------------
+        async function loadNiches() {
+            try {
+                const r = await fetch('/api/niches');
+                const d = await r.json();
+                const sel = document.getElementById('nicheSelect');
+                sel.innerHTML = d.available.map(n => {
+                    const modeTag = n.mode === 'directory' ? ' [B2B]' : ' [Community]';
+                    const sel_attr = n.slug === d.active ? ' selected' : '';
+                    return `<option value="${n.slug}"${sel_attr}>${n.display_name}${modeTag}</option>`;
+                }).join('');
+                _updateNicheBadge(d.available.find(n => n.slug === d.active));
+            } catch (e) { console.error('loadNiches failed', e); }
+        }
+
+        function _updateNicheBadge(niche) {
+            const badge = document.getElementById('nicheBadge');
+            if (!niche) { badge.textContent = ''; return; }
+            const color = niche.mode === 'directory' ? '#a855f7' : '#3b82f6';
+            const label = niche.mode === 'directory' ? 'B2B · businesses' : 'B2C · communities';
+            badge.innerHTML = `<span style="color:${color}">●</span> ${label}`;
+        }
+
+        async function switchNiche(slug) {
+            const sel = document.getElementById('nicheSelect');
+            sel.disabled = true;
+            try {
+                const r = await fetch('/api/niches/active', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({slug}),
+                });
+                const d = await r.json();
+                if (d.error) {
+                    showToast(d.error, true);
+                    // re-load to revert select to actual active niche
+                    await loadNiches();
+                } else {
+                    _updateNicheBadge(d);
+                    showToast(`Niche switched to ${d.display_name}`);
+                    // Refresh the current tab + stats
+                    loadStats();
+                    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab;
+                    if (activeTab === 'leads') loadLeads();
+                    if (activeTab === 'businesses') loadBusinesses();
+                    if (activeTab === 'pipeline') loadPipeline();
+                    if (activeTab === 'directory') loadDirectory();
+                }
+            } catch (e) {
+                showToast('Failed to switch niche: ' + e.message, true);
+            } finally {
+                sel.disabled = false;
+            }
+        }
+
         // --- Init ---
+        loadNiches();
         loadStats();
         // Handle ?tab=replies from OAuth redirect
         if (new URLSearchParams(window.location.search).get('tab') === 'replies') {

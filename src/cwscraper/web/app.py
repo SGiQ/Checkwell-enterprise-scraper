@@ -16,7 +16,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 from cwscraper import __version__
 from cwscraper.core.engine import ScanEngine
 from cwscraper.core.models import PIPELINE_STAGE_LABELS, PIPELINE_STAGES
-from cwscraper.core.niche import load_niche
+from cwscraper.core.niche import list_bundled_niches, load_niche
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
 from cwscraper.replies import RedditOAuth, draft_outreach, draft_reply, post_reddit_comment
@@ -28,28 +28,77 @@ logging.basicConfig(
 logger = logging.getLogger("cwscraper.web")
 
 
+class AppContext:
+    """Mutable holder for niche-dependent objects.
+
+    Lets the dashboard swap niche packs at runtime without restarting the
+    process. Routes read ctx.niche / ctx.engine on every request, so a swap
+    is visible immediately.
+    """
+
+    def __init__(self):
+        self.repo = JSONRepository()
+        self.reddit_oauth = RedditOAuth(self.repo)
+        self.niche = None
+        self.engine = None
+        self.scheduler: AutoScanner | None = None
+        self._lock = threading.Lock()
+
+    def boot(self) -> None:
+        """Load active niche from config (or env, or fallback) on app start."""
+        cfg = self.repo.get_config()
+        slug = cfg.get("active_niche") or os.getenv("CWSCRAPER_NICHE") or "caregiver"
+        try:
+            self.swap_niche(slug)
+        except FileNotFoundError:
+            logger.warning("Niche '%s' not found, falling back to caregiver", slug)
+            self.swap_niche("caregiver")
+
+    def swap_niche(self, slug: str) -> dict:
+        """Switch to a different niche pack. Persists the choice."""
+        with self._lock:
+            if self.engine and (self.engine.is_scanning or self.engine.is_enriching):
+                raise RuntimeError(
+                    "Cannot switch niche while a scan or enrichment is in progress"
+                )
+
+            new_niche = load_niche(slug)
+
+            if self.scheduler:
+                self.scheduler.stop()
+
+            self.niche = new_niche
+            self.engine = ScanEngine(self.repo, new_niche)
+            self.scheduler = AutoScanner(self.engine, self.repo)
+
+            cfg = self.repo.get_config()
+            cfg["active_niche"] = new_niche.slug
+            self.repo.save_config(cfg)
+            if cfg.get("auto_scan_enabled"):
+                self.scheduler.start()
+
+            logger.info("Active niche: %s (%s mode)", new_niche.slug, new_niche.mode)
+            return {
+                "slug": new_niche.slug,
+                "display_name": new_niche.display_name,
+                "mode": new_niche.mode,
+                "description": new_niche.description,
+            }
+
+
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates")
     app.secret_key = os.getenv("CWSCRAPER_SECRET", "cwscraper-dev-secret-change-me")
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["TEMPLATES_AUTO_RELOAD"] = True
 
-    repo = JSONRepository()
-    niche = load_niche()
-    engine = ScanEngine(repo, niche)
-    scheduler = AutoScanner(engine, repo)
-    reddit_oauth = RedditOAuth(repo)
+    ctx = AppContext()
+    ctx.boot()
+    app.extensions["cwscraper"] = ctx
 
-    if repo.get_config().get("auto_scan_enabled"):
-        scheduler.start()
-
-    app.extensions["cwscraper"] = {
-        "repo": repo,
-        "niche": niche,
-        "engine": engine,
-        "scheduler": scheduler,
-        "reddit_oauth": reddit_oauth,
-    }
+    # Convenience: short aliases the route bodies use.
+    repo = ctx.repo
+    reddit_oauth = ctx.reddit_oauth
 
     # ----------------------- no-cache for dev/admin -------------------------
     @app.after_request
@@ -65,11 +114,43 @@ def create_app() -> Flask:
     # ----------------------- core pages -------------------------------------
     @app.route("/")
     def dashboard():
-        return render_template("dashboard.html", niche=niche, version=__version__)
+        return render_template("dashboard.html", niche=ctx.niche, version=__version__)
 
     @app.route("/api/health")
     def api_health():
-        return jsonify({"ok": True, "version": __version__, "niche": niche.slug})
+        return jsonify({"ok": True, "version": __version__, "niche": ctx.niche.slug})
+
+    # ----------------------- niche switching --------------------------------
+    @app.route("/api/niches")
+    def api_list_niches():
+        """List all bundled niche packs + which one is active."""
+        return jsonify({
+            "active": ctx.niche.slug,
+            "available": list_bundled_niches(),
+        })
+
+    @app.route("/api/niches/active", methods=["GET"])
+    def api_active_niche():
+        return jsonify({
+            "slug": ctx.niche.slug,
+            "display_name": ctx.niche.display_name,
+            "mode": ctx.niche.mode,
+            "description": ctx.niche.description,
+        })
+
+    @app.route("/api/niches/active", methods=["POST"])
+    def api_switch_niche():
+        data = request.get_json() or {}
+        slug = data.get("slug")
+        if not slug:
+            return jsonify({"error": "slug is required"}), 400
+        try:
+            result = ctx.swap_niche(slug)
+        except FileNotFoundError:
+            return jsonify({"error": f"Niche pack '{slug}' not found"}), 404
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 409
+        return jsonify({"ok": True, **result})
 
     # ----------------------- stats ------------------------------------------
     @app.route("/api/stats")
@@ -125,7 +206,7 @@ def create_app() -> Flask:
             "by_platform": dict(sorted(by_platform.items(), key=lambda x: x[1], reverse=True)),
             "top_keywords": top_keywords,
             "last_scan": logs[0] if logs else None,
-            "is_scanning": engine.is_scanning,
+            "is_scanning": ctx.engine.is_scanning,
             "total_scans": len(logs),
         })
 
@@ -175,38 +256,37 @@ def create_app() -> Flask:
     # ----------------------- scanning ---------------------------------------
     @app.route("/api/scan", methods=["POST"])
     def api_scan():
-        if engine.is_scanning:
+        if ctx.engine.is_scanning:
             return jsonify({"error": "Scan already in progress"}), 409
-        threading.Thread(target=engine.run_full_scan, daemon=True).start()
+        threading.Thread(target=ctx.engine.run_full_scan, daemon=True).start()
         return jsonify({"status": "started"})
 
     @app.route("/api/scan/status")
     def api_scan_status():
         return jsonify({
-            "is_scanning": engine.is_scanning,
-            "last_scan": engine.last_scan,
-            "progress": engine.progress,
+            "is_scanning": ctx.engine.is_scanning,
+            "last_scan": ctx.engine.last_scan,
+            "progress": ctx.engine.progress,
         })
 
     @app.route("/api/discover", methods=["POST"])
     def api_discover():
-        if engine.is_scanning:
+        if ctx.engine.is_scanning:
             return jsonify({"error": "Scanner is busy"}), 409
         from cwscraper.scanners.base import ScannerContext
         from cwscraper.scanners.reddit import RedditScanner
 
-        rs = RedditScanner(niche)
-        # Use the niche's first 5 medium-intent keywords as discovery queries
-        queries = niche.medium_intent_keywords[:5] or ["caregiver"]
-        ctx = ScannerContext()
-        return jsonify({"subreddits": rs.discover_subreddits(queries, ctx)})
+        rs = RedditScanner(ctx.niche)
+        queries = ctx.niche.medium_intent_keywords[:5] or ["caregiver"]
+        scan_ctx = ScannerContext()
+        return jsonify({"subreddits": rs.discover_subreddits(queries, scan_ctx)})
 
     # ----------------------- config -----------------------------------------
     @app.route("/api/config", methods=["GET"])
     def api_get_config():
         cfg = repo.get_config()
         # back-compat keys the existing dashboard reads
-        cfg.setdefault("subreddits", [asdict(s) for s in niche.subreddits])
+        cfg.setdefault("subreddits", [asdict(s) for s in ctx.niche.subreddits])
         cfg.setdefault("quora_enabled", False)
         cfg.setdefault("agingcare_enabled", False)
         return jsonify(cfg)
@@ -218,9 +298,9 @@ def create_app() -> Flask:
         cfg.update(data)
         repo.save_config(cfg)
         if cfg.get("auto_scan_enabled"):
-            scheduler.start()
+            ctx.scheduler.start()
         else:
-            scheduler.stop()
+            ctx.scheduler.stop()
         return jsonify({"ok": True})
 
     @app.route("/api/directory")
@@ -234,7 +314,7 @@ def create_app() -> Flask:
                     "url": f"https://reddit.com/r/{s.name}",
                     "platform": "Reddit",
                 }
-                for s in niche.subreddits
+                for s in ctx.niche.subreddits
             ],
             "facebook": [],
             "other": [],
@@ -285,7 +365,7 @@ def create_app() -> Flask:
         lead = next((l for l in repo.get_leads() if l.get("id") == lead_id), None)
         if not lead:
             return jsonify({"error": "Lead not found"}), 404
-        draft = draft_reply(lead, niche)
+        draft = draft_reply(lead, ctx.niche)
         repo.save_reply(draft)
         return jsonify(draft)
 
@@ -339,7 +419,7 @@ def create_app() -> Flask:
     def api_reply_templates():
         return jsonify({
             t.key: {"name": t.name, "template": t.template}
-            for t in niche.reply_templates
+            for t in ctx.niche.reply_templates
         })
 
     # ----------------------- businesses (directory mode) -------------------
@@ -613,7 +693,7 @@ def create_app() -> Flask:
     # ----------------------- enrichment ------------------------------------
     @app.route("/api/enrich", methods=["POST"])
     def api_enrich():
-        if engine.is_enriching:
+        if ctx.engine.is_enriching:
             return jsonify({"error": "Enrichment already in progress"}), 409
         data = request.get_json(silent=True) or {}
         enricher = data.get("enricher", "website")
@@ -626,7 +706,7 @@ def create_app() -> Flask:
                 return jsonify({"error": "limit must be an integer"}), 400
 
         threading.Thread(
-            target=engine.run_enrichment,
+            target=ctx.engine.run_enrichment,
             kwargs={
                 "enricher_slug": enricher,
                 "only_missing_email": bool(only_missing),
@@ -639,9 +719,9 @@ def create_app() -> Flask:
     @app.route("/api/enrich/status")
     def api_enrich_status():
         return jsonify({
-            "is_enriching": engine.is_enriching,
-            "progress": engine.enrichment_progress,
-            "last_enrichment": engine.last_enrichment,
+            "is_enriching": ctx.engine.is_enriching,
+            "progress": ctx.engine.enrichment_progress,
+            "last_enrichment": ctx.engine.last_enrichment,
         })
 
     # ----------------------- outreach (cold email drafts) ------------------
@@ -655,13 +735,13 @@ def create_app() -> Flask:
         )
         if not business:
             return jsonify({"error": "Business not found"}), 404
-        return jsonify(draft_outreach(business, niche, template_key))
+        return jsonify(draft_outreach(business, ctx.niche, template_key))
 
     @app.route("/api/outreach/templates")
     def api_outreach_templates():
         return jsonify({
             t.key: {"name": t.name, "subject": t.subject, "body": t.body}
-            for t in niche.outreach_templates
+            for t in ctx.niche.outreach_templates
         })
 
     # ----------------------- Reddit OAuth -----------------------------------
@@ -729,6 +809,6 @@ if __name__ == "__main__":
     host = os.getenv("CWSCRAPER_HOST", "0.0.0.0")
     cwscraper_ctx = app.extensions["cwscraper"]
     print(f"\n  CheckWell Enterprise Scraper v{__version__}")
-    print(f"  Niche pack: {cwscraper_ctx['niche'].display_name}")
+    print(f"  Niche pack: {cwscraper_ctx.niche.display_name} ({cwscraper_ctx.niche.mode} mode)")
     print(f"  Dashboard:  http://localhost:{port}\n")
     app.run(host=host, port=port, debug=True)
