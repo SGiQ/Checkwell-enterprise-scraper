@@ -17,6 +17,7 @@ from cwscraper import __version__
 from cwscraper.core.engine import ScanEngine
 from cwscraper.core.models import PIPELINE_STAGE_LABELS, PIPELINE_STAGES
 from cwscraper.core.niche import list_bundled_niches, load_niche
+from cwscraper.core.preflight import evaluate as evaluate_preflight
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
 from cwscraper.replies import RedditOAuth, draft_outreach, draft_reply, post_reddit_comment
@@ -136,6 +137,19 @@ def create_app() -> Flask:
             "display_name": ctx.niche.display_name,
             "mode": ctx.niche.mode,
             "description": ctx.niche.description,
+        })
+
+    @app.route("/api/preflight")
+    def api_preflight():
+        """Readiness check for the active niche. Surfaces blockers/warnings."""
+        check = evaluate_preflight(ctx.niche)
+        return jsonify({
+            "niche": {
+                "slug": ctx.niche.slug,
+                "display_name": ctx.niche.display_name,
+                "mode": ctx.niche.mode,
+            },
+            **check.to_dict(),
         })
 
     @app.route("/api/niches/active", methods=["POST"])

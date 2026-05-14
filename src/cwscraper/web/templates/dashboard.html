@@ -251,6 +251,25 @@
 
     <!-- Main -->
     <div class="main">
+        <!-- Pre-flight readiness banner (sits above all tabs) -->
+        <div id="preflightBanner" style="display:none;margin:0 0 18px 0;padding:14px 18px;border-radius:6px;border:1px solid #334155;background:#1e293b">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                <div style="flex:1;min-width:0">
+                    <div id="preflightTitle" style="font-weight:600;font-size:14px;margin-bottom:4px"></div>
+                    <div id="preflightDetail" style="font-size:12px;color:#cbd5e1"></div>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                    <button onclick="togglePreflightDetails()" id="preflightToggleBtn" style="background:transparent;color:#94a3b8;border:1px solid #334155;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Details</button>
+                </div>
+            </div>
+            <div id="preflightDetailsPanel" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #334155">
+                <div id="preflightItems" style="font-size:12px"></div>
+                <div style="margin-top:10px;font-size:11px;color:#64748b">
+                    <strong style="color:#94a3b8">Env vars detected:</strong>
+                    <span id="preflightEnvVars"></span>
+                </div>
+            </div>
+        </div>
         <!-- Overview Tab -->
         <div id="tab-overview" class="tab-content active">
             <div class="header">
@@ -1222,6 +1241,12 @@ ${d.body}</pre>`);
         const platformDotClass = {Reddit:'reddit', YouTube:'youtube', HackerNews:'hackernews', Quora:'quora', 'AgingCare.com':'agingcare', Done:''};
 
         async function startScan(ev) {
+            // Block early if preflight has blockers — easier to read than a silent 0-result scan.
+            if (preflightState && preflightState.blockers && preflightState.blockers.length) {
+                showToast(`Cannot scan: ${preflightState.blockers[0].title}`, true);
+                togglePreflightDetails();
+                return;
+            }
             // Either button can call this — find whichever was actually clicked
             // (the Overview's scanBtn or the Businesses tab's Run Directory Scan).
             const clickedBtn = ev && ev.currentTarget ? ev.currentTarget : null;
@@ -1767,6 +1792,81 @@ ${d.body}</pre>`);
             });
         }
 
+        // ---------- Pre-flight readiness banner -------------------------
+        let preflightState = null;
+
+        async function loadPreflight() {
+            try {
+                const r = await fetch('/api/preflight');
+                preflightState = await r.json();
+                _renderPreflightBanner();
+                _updateModeAwareUI();   // pick up new blockers in scan-button state
+            } catch (e) { console.error('preflight failed', e); }
+        }
+
+        function _renderPreflightBanner() {
+            const banner = document.getElementById('preflightBanner');
+            if (!preflightState) { banner.style.display = 'none'; return; }
+
+            const status = preflightState.status;
+            const blockers = preflightState.blockers || [];
+            const warnings = preflightState.warnings || [];
+            const notes    = preflightState.notes    || [];
+
+            // Hide the banner if everything is green AND there are no warnings.
+            if (status === 'ready' && warnings.length === 0) {
+                banner.style.display = 'none';
+                return;
+            }
+            banner.style.display = 'block';
+
+            // Tint by severity
+            const palette = {
+                blocked: { border: '#dc2626', bg: '#1e1010', text: '#fca5a5', icon: '⛔' },
+                warning: { border: '#f59e0b', bg: '#1e1c0d', text: '#fcd34d', icon: '⚠' },
+                ready:   { border: '#22c55e', bg: '#101e10', text: '#86efac', icon: '✓' },
+            }[status];
+            banner.style.borderColor = palette.border;
+            banner.style.background  = palette.bg;
+            banner.style.borderLeftWidth = '3px';
+
+            const summary = status === 'blocked'
+                ? `${palette.icon} ${blockers.length} blocker${blockers.length === 1 ? '' : 's'} preventing this niche from scanning`
+                : status === 'warning'
+                    ? `${palette.icon} ${warnings.length} warning${warnings.length === 1 ? '' : 's'} — scan will run but results may be limited`
+                    : `${palette.icon} Ready to scan`;
+            document.getElementById('preflightTitle').innerHTML = `<span style="color:${palette.text}">${summary}</span>`;
+
+            // Inline detail: first blocker or first warning, whichever applies
+            const headline = blockers[0] || warnings[0] || notes[0];
+            document.getElementById('preflightDetail').textContent = headline ? headline.title : '';
+        }
+
+        function togglePreflightDetails() {
+            const panel = document.getElementById('preflightDetailsPanel');
+            const visible = panel.style.display !== 'none';
+            if (visible) { panel.style.display = 'none'; return; }
+
+            const items = (preflightState.blockers || []).map(b => _preflightItem(b, '#fca5a5'))
+                .concat((preflightState.warnings || []).map(w => _preflightItem(w, '#fcd34d')))
+                .concat((preflightState.notes    || []).map(n => _preflightItem(n, '#94a3b8')));
+            document.getElementById('preflightItems').innerHTML =
+                items.length ? items.join('') : '<div style="color:#64748b">no issues</div>';
+
+            const env = preflightState.env_status || {};
+            document.getElementById('preflightEnvVars').innerHTML = Object.entries(env).map(([k, v]) =>
+                `<span style="margin-right:10px"><span style="color:${v ? '#86efac' : '#fca5a5'}">${v ? '✓' : '✗'}</span> ${k}</span>`
+            ).join('');
+            panel.style.display = 'block';
+        }
+
+        function _preflightItem(item, color) {
+            return `<div style="padding:6px 0;border-bottom:1px solid #1e293b">
+                <div style="color:${color};font-weight:600;font-size:12px">${item.title}</div>
+                <div style="font-size:11px;color:#cbd5e1;margin-top:2px">${item.detail || ''}</div>
+            </div>`;
+        }
+
         // Switch to the first available directory-mode niche (used by the banner CTA).
         async function switchToFirstDirectoryNiche() {
             const target = availableNiches.find(n => n.mode === 'directory');
@@ -1806,6 +1906,7 @@ ${d.body}</pre>`);
                     activeNiche = availableNiches.find(n => n.slug === d.slug) || d;
                     _updateNicheBadge(activeNiche);
                     _updateModeAwareUI();
+                    loadPreflight();
                     showToast(`Niche switched to ${d.display_name}`);
                     // Refresh the current tab + stats
                     loadStats();
@@ -1823,7 +1924,10 @@ ${d.body}</pre>`);
         }
 
         // --- Init ---
-        loadNiches();
+        (async () => {
+            await loadNiches();
+            loadPreflight();
+        })();
         loadStats();
         // Handle ?tab=replies from OAuth redirect
         if (new URLSearchParams(window.location.search).get('tab') === 'replies') {
