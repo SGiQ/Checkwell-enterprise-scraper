@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Protocol
 
-from cwscraper.core.models import Lead
+from cwscraper.core.models import BusinessLead, Lead
 
 
 def _data_dir() -> Path:
@@ -35,9 +35,16 @@ class Repository(Protocol):
     will add a SqlAlchemyRepository for multi-tenant Postgres.
     """
 
+    # --- community-mode leads (Reddit/YouTube/HN posts) ---
     def get_leads(self) -> list[dict]: ...
     def add_leads(self, leads: Iterable[Lead]) -> None: ...
     def update_lead_status(self, lead_id: str, status: str) -> None: ...
+
+    # --- directory-mode businesses (Google Places, Yelp) ---
+    def get_businesses(self) -> list[dict]: ...
+    def add_businesses(self, businesses: Iterable[BusinessLead]) -> None: ...
+    def update_business_status(self, business_id: str, status: str) -> None: ...
+    def update_business(self, business_id: str, patch: dict) -> None: ...
 
     def get_seen_ids(self) -> set[str]: ...
     def save_seen_ids(self, new_ids: dict[str, float]) -> None: ...
@@ -59,6 +66,7 @@ class JSONRepository:
     def __init__(self, data_dir: Path | None = None):
         self.dir = data_dir or _data_dir()
         self.leads_file = self.dir / "leads.json"
+        self.businesses_file = self.dir / "businesses.json"
         self.seen_file = self.dir / "seen_ids.json"
         self.config_file = self.dir / "config.json"
         self.scan_log_file = self.dir / "scan_log.json"
@@ -86,6 +94,45 @@ class JSONRepository:
                     lead["status"] = status
                     break
             self.leads_file.write_text(json.dumps(leads, indent=2), encoding="utf-8")
+
+    # --- businesses (directory mode) ---
+    def get_businesses(self) -> list[dict]:
+        with self._lock:
+            if self.businesses_file.exists():
+                return json.loads(self.businesses_file.read_text(encoding="utf-8"))
+            return []
+
+    def add_businesses(self, businesses: Iterable[BusinessLead]) -> None:
+        with self._lock:
+            existing = self.get_businesses()
+            by_id = {b["id"]: b for b in existing}
+            for biz in businesses:
+                row = asdict(biz)
+                if row["id"] in by_id:
+                    # Merge: keep status / contacts / email from existing,
+                    # refresh everything else from latest scan.
+                    prior = by_id[row["id"]]
+                    row["status"] = prior.get("status", "new")
+                    row["email"] = row["email"] or prior.get("email", "")
+                    row["contacts"] = row["contacts"] or prior.get("contacts", [])
+                by_id[row["id"]] = row
+            self.businesses_file.write_text(
+                json.dumps(list(by_id.values()), indent=2), encoding="utf-8"
+            )
+
+    def update_business_status(self, business_id: str, status: str) -> None:
+        self.update_business(business_id, {"status": status})
+
+    def update_business(self, business_id: str, patch: dict) -> None:
+        with self._lock:
+            businesses = self.get_businesses()
+            for biz in businesses:
+                if biz["id"] == business_id:
+                    biz.update(patch)
+                    break
+            self.businesses_file.write_text(
+                json.dumps(businesses, indent=2), encoding="utf-8"
+            )
 
     # --- seen IDs (30-day rolling window) ---
     def get_seen_ids(self) -> set[str]:

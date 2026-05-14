@@ -24,16 +24,44 @@ class ReplyTemplate:
 
 
 @dataclass
+class DirectoryConfig:
+    """Directory-mode config: where to look for businesses."""
+
+    search_queries: list[str] = field(default_factory=list)   # e.g. "home care agency"
+    locations: list[str] = field(default_factory=list)        # e.g. "Tampa, FL"
+    min_rating: float = 0.0
+    max_per_query: int = 20
+    category_label: str = ""                                  # tagged onto every BusinessLead
+
+
+@dataclass
+class OutreachTemplate:
+    """Cold-email template for B2B outreach. Subject + body."""
+
+    key: str
+    name: str
+    subject: str = ""
+    body: str = ""
+
+
+@dataclass
 class NichePack:
     """A pluggable configuration bundle for a vertical (caregiver, hvac, etc.).
 
     Loaded from a YAML file under src/cwscraper/niches/. Drives keyword
     matching, default sources, and reply drafting per install.
+
+    Two modes:
+      - community  (default) — Reddit/YouTube/HN consumer-pain scanning
+      - directory  — Google Places/Yelp business discovery for B2B outreach
     """
 
     slug: str
     display_name: str
     description: str = ""
+    mode: str = "community"
+
+    # --- community mode ---
     high_intent_keywords: list[str] = field(default_factory=list)
     medium_intent_keywords: list[str] = field(default_factory=list)
     subreddits: list[SubredditConfig] = field(default_factory=list)
@@ -43,11 +71,22 @@ class NichePack:
     reply_templates: list[ReplyTemplate] = field(default_factory=list)
     default_reply_template: str = "general_helpful"
 
+    # --- directory mode ---
+    directory: DirectoryConfig = field(default_factory=DirectoryConfig)
+    outreach_templates: list[OutreachTemplate] = field(default_factory=list)
+    default_outreach_template: str = "cold_intro"
+
     def enabled_subreddits(self) -> list[str]:
         return [s.name for s in self.subreddits if s.enabled]
 
     def reply_template(self, key: str) -> ReplyTemplate | None:
         for t in self.reply_templates:
+            if t.key == key:
+                return t
+        return None
+
+    def outreach_template(self, key: str) -> OutreachTemplate | None:
+        for t in self.outreach_templates:
             if t.key == key:
                 return t
         return None
@@ -78,10 +117,19 @@ def load_niche(slug: str | None = None) -> NichePack:
 
 
 def _from_dict(data: dict) -> NichePack:
+    directory_block = data.get("directory") or {}
+    directory = DirectoryConfig(
+        search_queries=list(directory_block.get("search_queries", [])),
+        locations=list(directory_block.get("locations", [])),
+        min_rating=float(directory_block.get("min_rating", 0.0)),
+        max_per_query=int(directory_block.get("max_per_query", 20)),
+        category_label=directory_block.get("category_label", ""),
+    )
     return NichePack(
         slug=data["slug"],
         display_name=data.get("display_name", data["slug"]),
         description=data.get("description", ""),
+        mode=data.get("mode", "community"),
         high_intent_keywords=[k.lower() for k in data.get("high_intent_keywords", [])],
         medium_intent_keywords=[k.lower() for k in data.get("medium_intent_keywords", [])],
         subreddits=[SubredditConfig(**s) for s in data.get("subreddits", [])],
@@ -98,4 +146,15 @@ def _from_dict(data: dict) -> NichePack:
             for t in data.get("reply_templates", [])
         ],
         default_reply_template=data.get("default_reply_template", "general_helpful"),
+        directory=directory,
+        outreach_templates=[
+            OutreachTemplate(
+                key=t["key"],
+                name=t.get("name", t["key"]),
+                subject=t.get("subject", ""),
+                body=t.get("body", ""),
+            )
+            for t in data.get("outreach_templates", [])
+        ],
+        default_outreach_template=data.get("default_outreach_template", "cold_intro"),
     )

@@ -218,6 +218,10 @@
             <span class="nav-icon">&#9776;</span>
             <span class="nav-text">Directory</span>
         </div>
+        <div class="nav-item" data-tab="businesses">
+            <span class="nav-icon">&#127970;</span>
+            <span class="nav-text">Businesses</span>
+        </div>
         <div class="nav-item" data-tab="history">
             <span class="nav-icon">&#8635;</span>
             <span class="nav-text">Scan History</span>
@@ -378,6 +382,55 @@
             <div class="directory-grid" id="dirOther"></div>
         </div>
 
+        <!-- Businesses Tab (directory mode) -->
+        <div id="tab-businesses" class="tab-content">
+            <div class="header">
+                <h2>Businesses</h2>
+                <div>
+                    <a href="/api/businesses/export/csv" class="scan-btn" style="text-decoration:none;background:#475569;margin-right:8px">Export CSV</a>
+                    <button class="scan-btn" onclick="startScan()">Run Directory Scan</button>
+                </div>
+            </div>
+            <div class="stats-grid" id="bizStatsGrid">
+                <div class="stat-card"><div class="label">Total Businesses</div><div class="value blue" id="bizStatTotal">-</div></div>
+                <div class="stat-card"><div class="label">New</div><div class="value blue" id="bizStatNew">-</div></div>
+                <div class="stat-card"><div class="label">Qualified</div><div class="value green" id="bizStatQualified">-</div></div>
+                <div class="stat-card"><div class="label">Contacted</div><div class="value medium" id="bizStatContacted">-</div></div>
+                <div class="stat-card"><div class="label">With Website</div><div class="value blue" id="bizStatWebsite">-</div></div>
+                <div class="stat-card"><div class="label">With Email</div><div class="value high" id="bizStatEmail">-</div></div>
+            </div>
+            <div class="panel">
+                <div class="panel-header" style="display:flex;gap:8px;flex-wrap:wrap">
+                    <input type="text" id="bizSearch" placeholder="Search name / address / city..." style="flex:1;min-width:240px;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                    <select id="bizState" style="padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                        <option value="">All States</option>
+                        <option value="FL">FL</option><option value="GA">GA</option>
+                        <option value="SC">SC</option><option value="NC">NC</option>
+                        <option value="TN">TN</option>
+                    </select>
+                    <select id="bizStatus" style="padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                        <option value="">All Status</option>
+                        <option value="new">New</option>
+                        <option value="qualified">Qualified</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="dismissed">Dismissed</option>
+                    </select>
+                    <button class="scan-btn" onclick="loadBusinesses()" style="background:#0ea5e9">Filter</button>
+                </div>
+                <div class="panel-body">
+                    <table class="lead-table" id="bizTable">
+                        <thead><tr>
+                            <th>Business</th><th>Location</th><th>Contact</th><th>Rating</th><th>Status</th><th>Actions</th>
+                        </tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    <div id="bizEmpty" style="text-align:center;padding:40px;color:#64748b;display:none">
+                        No businesses yet. Run a directory scan to populate this list.
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- History Tab -->
         <div id="tab-history" class="tab-content">
             <div class="header"><h2>Scan History</h2></div>
@@ -446,6 +499,7 @@
                 item.classList.add('active');
                 document.getElementById('tab-' + item.dataset.tab).classList.add('active');
                 if (item.dataset.tab === 'leads') loadLeads();
+                if (item.dataset.tab === 'businesses') loadBusinesses();
                 if (item.dataset.tab === 'replies') loadRepliesTab();
                 if (item.dataset.tab === 'directory') loadDirectory();
                 if (item.dataset.tab === 'history') loadScanLogs();
@@ -585,6 +639,128 @@
                     '<tr><td colspan="6" style="text-align:center;color:#64748b;padding:30px">No leads found matching filters.</td></tr>';
                 renderPagination(d.page, d.pages, d.total);
             } catch(e) { console.error(e); }
+        }
+
+        // ----- Businesses (directory mode) -----------------------------------
+        function bizStatusBadge(s) {
+            const colors = {
+                new: '#3b82f6', qualified: '#22c55e',
+                contacted: '#fbbf24', dismissed: '#64748b'
+            };
+            const c = colors[s] || '#64748b';
+            return `<span style="background:${c}22;color:${c};padding:3px 8px;border-radius:4px;font-size:11px;text-transform:uppercase">${s || 'new'}</span>`;
+        }
+
+        function renderBusinessRow(b) {
+            const site = b.website
+                ? `<a href="${b.website}" target="_blank" style="color:#60a5fa">website</a>`
+                : '<span style="color:#475569">—</span>';
+            const phone = b.phone || '<span style="color:#475569">—</span>';
+            const email = b.email
+                ? `<a href="mailto:${b.email}" style="color:#4ade80">${b.email}</a>`
+                : '<span style="color:#475569">no email</span>';
+            const stars = b.rating
+                ? `<span style="color:#fbbf24">${b.rating.toFixed(1)} ★</span> <small style="color:#64748b">(${b.review_count || 0})</small>`
+                : '<span style="color:#475569">—</span>';
+            return `<tr>
+                <td>
+                    <div style="font-weight:600">${b.name || '(unnamed)'}</div>
+                    <small style="color:#64748b">${b.category || ''}</small>
+                </td>
+                <td>
+                    <div>${b.city || ''}, ${b.state || ''} ${b.zip_code || ''}</div>
+                    <small style="color:#64748b">${b.address || ''}</small>
+                </td>
+                <td>
+                    <div>${phone}</div>
+                    <div>${site}</div>
+                    <div>${email}</div>
+                </td>
+                <td>${stars}</td>
+                <td>${bizStatusBadge(b.status)}</td>
+                <td>
+                    <button onclick="draftOutreach('${b.id}')" style="background:#0ea5e9;color:#fff;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-bottom:4px;display:block;width:100%">Draft Email</button>
+                    <select onchange="updateBizStatus('${b.id}', this.value)" style="background:#0f172a;color:#e2e8f0;border:1px solid #334155;padding:5px;border-radius:4px;font-size:11px;width:100%">
+                        <option value="">change status…</option>
+                        <option value="qualified">Qualified</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="dismissed">Dismissed</option>
+                        <option value="new">Reset to New</option>
+                    </select>
+                </td>
+            </tr>`;
+        }
+
+        async function loadBusinesses() {
+            const search = document.getElementById('bizSearch').value;
+            const state  = document.getElementById('bizState').value;
+            const status = document.getElementById('bizStatus').value;
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (state)  params.set('state', state);
+            if (status) params.set('status', status);
+            params.set('per_page', 100);
+
+            try {
+                const [statsR, listR] = await Promise.all([
+                    fetch('/api/businesses/stats'),
+                    fetch('/api/businesses?' + params),
+                ]);
+                const stats = await statsR.json();
+                const list  = await listR.json();
+
+                document.getElementById('bizStatTotal').textContent     = stats.total;
+                document.getElementById('bizStatNew').textContent       = stats.by_status.new || 0;
+                document.getElementById('bizStatQualified').textContent = stats.by_status.qualified || 0;
+                document.getElementById('bizStatContacted').textContent = stats.by_status.contacted || 0;
+                document.getElementById('bizStatWebsite').textContent   = stats.with_website;
+                document.getElementById('bizStatEmail').textContent     = stats.with_email;
+
+                const tbody = document.querySelector('#bizTable tbody');
+                const empty = document.getElementById('bizEmpty');
+                if (list.businesses.length === 0) {
+                    tbody.innerHTML = '';
+                    empty.style.display = 'block';
+                } else {
+                    empty.style.display = 'none';
+                    tbody.innerHTML = list.businesses.map(renderBusinessRow).join('');
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function updateBizStatus(id, status) {
+            if (!status) return;
+            await fetch(`/api/businesses/${id}/status`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status}),
+            });
+            loadBusinesses();
+        }
+
+        async function draftOutreach(id) {
+            try {
+                const r = await fetch('/api/outreach/draft', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({business_id: id}),
+                });
+                const d = await r.json();
+                if (d.error) { alert(d.error); return; }
+                // Open a mailto: with subject + body pre-filled when we have an email,
+                // otherwise show the draft so user can copy/paste.
+                if (d.email) {
+                    const mailto = `mailto:${d.email}?subject=${encodeURIComponent(d.subject)}&body=${encodeURIComponent(d.body)}`;
+                    window.open(mailto, '_blank');
+                } else {
+                    const w = window.open('', '_blank');
+                    w.document.write(`<pre style="font-family:system-ui;padding:24px;white-space:pre-wrap;line-height:1.5">
+<b>To:</b> (no email on file — try ${d.phone || 'their website'})
+<b>Subject:</b> ${d.subject}
+
+${d.body}</pre>`);
+                }
+            } catch (e) { alert('Draft failed: ' + e.message); }
         }
 
         function renderPagination(page, pages, total) {

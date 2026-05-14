@@ -18,7 +18,7 @@ from cwscraper.core.engine import ScanEngine
 from cwscraper.core.niche import load_niche
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
-from cwscraper.replies import RedditOAuth, draft_reply, post_reddit_comment
+from cwscraper.replies import RedditOAuth, draft_outreach, draft_reply, post_reddit_comment
 
 logging.basicConfig(
     level=logging.INFO,
@@ -339,6 +339,143 @@ def create_app() -> Flask:
         return jsonify({
             t.key: {"name": t.name, "template": t.template}
             for t in niche.reply_templates
+        })
+
+    # ----------------------- businesses (directory mode) -------------------
+    @app.route("/api/businesses")
+    def api_businesses():
+        businesses = repo.get_businesses()
+        status = request.args.get("status")
+        state = request.args.get("state")
+        city = request.args.get("city")
+        has_website = request.args.get("has_website")
+        min_rating = request.args.get("min_rating", type=float)
+        search = request.args.get("search", "").lower()
+
+        if status:
+            businesses = [b for b in businesses if b.get("status") == status]
+        if state:
+            businesses = [b for b in businesses if b.get("state") == state]
+        if city:
+            businesses = [b for b in businesses if b.get("city", "").lower() == city.lower()]
+        if has_website in ("true", "1"):
+            businesses = [b for b in businesses if b.get("website")]
+        if min_rating is not None:
+            businesses = [b for b in businesses if (b.get("rating") or 0) >= min_rating]
+        if search:
+            businesses = [
+                b for b in businesses
+                if search in b.get("name", "").lower()
+                or search in b.get("address", "").lower()
+                or search in b.get("city", "").lower()
+            ]
+
+        businesses.sort(
+            key=lambda b: (-(b.get("rating") or 0), -(b.get("review_count") or 0))
+        )
+
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 25))
+        start_idx = (page - 1) * per_page
+        return jsonify({
+            "businesses": businesses[start_idx:start_idx + per_page],
+            "total": len(businesses),
+            "page": page,
+            "per_page": per_page,
+            "pages": (len(businesses) + per_page - 1) // per_page,
+        })
+
+    @app.route("/api/businesses/<business_id>/status", methods=["POST"])
+    def api_update_business_status(business_id):
+        data = request.get_json() or {}
+        status = data.get("status")
+        if status not in ("new", "qualified", "contacted", "dismissed"):
+            return jsonify({"error": "Invalid status"}), 400
+        repo.update_business_status(business_id, status)
+        return jsonify({"ok": True})
+
+    @app.route("/api/businesses/<business_id>/contact", methods=["POST"])
+    def api_update_business_contact(business_id):
+        """Append/update contact info on a business lead.
+
+        Body: {email?: str, contacts?: [{name, title, email, phone}]}
+        """
+        data = request.get_json() or {}
+        patch = {}
+        if "email" in data:
+            patch["email"] = data["email"]
+        if "contacts" in data:
+            patch["contacts"] = data["contacts"]
+        if not patch:
+            return jsonify({"error": "Provide email and/or contacts"}), 400
+        repo.update_business(business_id, patch)
+        return jsonify({"ok": True})
+
+    @app.route("/api/businesses/stats")
+    def api_business_stats():
+        businesses = repo.get_businesses()
+        by_state: dict[str, int] = {}
+        by_status: dict[str, int] = {"new": 0, "qualified": 0, "contacted": 0, "dismissed": 0}
+        with_website = with_phone = with_email = 0
+        for b in businesses:
+            by_state[b.get("state", "")] = by_state.get(b.get("state", ""), 0) + 1
+            by_status[b.get("status", "new")] = by_status.get(b.get("status", "new"), 0) + 1
+            if b.get("website"):
+                with_website += 1
+            if b.get("phone"):
+                with_phone += 1
+            if b.get("email"):
+                with_email += 1
+        return jsonify({
+            "total": len(businesses),
+            "by_state": dict(sorted(by_state.items())),
+            "by_status": by_status,
+            "with_website": with_website,
+            "with_phone": with_phone,
+            "with_email": with_email,
+        })
+
+    @app.route("/api/businesses/export/csv")
+    def api_businesses_csv():
+        businesses = repo.get_businesses()
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=[
+                "name", "category", "address", "city", "state", "zip_code",
+                "phone", "website", "email", "rating", "review_count",
+                "discovered_via", "status", "discovered_at",
+            ],
+        )
+        writer.writeheader()
+        for b in businesses:
+            writer.writerow({k: b.get(k, "") for k in writer.fieldnames})
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode()),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"cwscraper_businesses_{datetime.now().strftime('%Y%m%d')}.csv",
+        )
+
+    # ----------------------- outreach (cold email drafts) ------------------
+    @app.route("/api/outreach/draft", methods=["POST"])
+    def api_outreach_draft():
+        data = request.get_json() or {}
+        business_id = data.get("business_id")
+        template_key = data.get("template_key")
+        business = next(
+            (b for b in repo.get_businesses() if b.get("id") == business_id), None
+        )
+        if not business:
+            return jsonify({"error": "Business not found"}), 404
+        return jsonify(draft_outreach(business, niche, template_key))
+
+    @app.route("/api/outreach/templates")
+    def api_outreach_templates():
+        return jsonify({
+            t.key: {"name": t.name, "subject": t.subject, "body": t.body}
+            for t in niche.outreach_templates
         })
 
     # ----------------------- Reddit OAuth -----------------------------------
