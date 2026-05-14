@@ -238,7 +238,7 @@
         <div id="tab-overview" class="tab-content active">
             <div class="header">
                 <h2>Lead Overview</h2>
-                <button class="scan-btn" id="scanBtn" onclick="startScan()">Run Scan Now</button>
+                <button class="scan-btn" id="scanBtn" onclick="startScan(event)">Run Scan Now</button>
             </div>
 
             <!-- Scan Progress Bar -->
@@ -389,7 +389,7 @@
                 <div>
                     <a href="/api/businesses/export/csv" class="scan-btn" style="text-decoration:none;background:#475569;margin-right:8px">Export CSV</a>
                     <button class="scan-btn" id="enrichBtn" onclick="startEnrichment()" style="background:#7c3aed;margin-right:8px">Enrich Contacts</button>
-                    <button class="scan-btn" onclick="startScan()">Run Directory Scan</button>
+                    <button class="scan-btn" onclick="startScan(event)">Run Directory Scan</button>
                 </div>
             </div>
             <div class="scan-progress" id="enrichProgress" style="display:none;background:#2e1065;border-color:#7c3aed">
@@ -894,73 +894,145 @@ ${d.body}</pre>`);
         // --- Scan ---
         const platformDotClass = {Reddit:'reddit', YouTube:'youtube', HackerNews:'hackernews', Quora:'quora', 'AgingCare.com':'agingcare', Done:''};
 
-        async function startScan() {
-            const btn = document.getElementById('scanBtn');
-            btn.disabled = true; btn.textContent = 'Scanning...'; btn.classList.add('scanning');
-            document.getElementById('scanProgress').classList.add('active');
+        async function startScan(ev) {
+            // Either button can call this — find whichever was actually clicked
+            // (the Overview's scanBtn or the Businesses tab's Run Directory Scan).
+            const clickedBtn = ev && ev.currentTarget ? ev.currentTarget : null;
+            const overviewBtn = document.getElementById('scanBtn');
+            const overviewProgress = document.getElementById('scanProgress');
+
+            if (clickedBtn) {
+                clickedBtn.dataset.origLabel = clickedBtn.textContent;
+                clickedBtn.disabled = true;
+                clickedBtn.textContent = 'Scanning...';
+                clickedBtn.classList.add('scanning');
+            }
+            if (overviewBtn && overviewBtn !== clickedBtn) {
+                overviewBtn.disabled = true;
+                overviewBtn.textContent = 'Scanning...';
+                overviewBtn.classList.add('scanning');
+            }
+            if (overviewProgress) overviewProgress.classList.add('active');
+
+            showToast('Scan started — check Overview tab for progress');
             try {
-                await fetch('/api/scan', {method: 'POST'});
-                pollScan();
+                const r = await fetch('/api/scan', {method: 'POST'});
+                const d = await r.json();
+                if (d.error) {
+                    showToast(d.error, true);
+                    _resetScanButtons(clickedBtn, overviewBtn);
+                    return;
+                }
+                pollScan(clickedBtn);
             } catch(e) {
-                showToast('Failed to start scan', true);
-                btn.disabled = false; btn.textContent = 'Run Scan Now'; btn.classList.remove('scanning');
-                document.getElementById('scanProgress').classList.remove('active');
+                showToast('Failed to start scan: ' + e.message, true);
+                _resetScanButtons(clickedBtn, overviewBtn);
+                if (overviewProgress) overviewProgress.classList.remove('active');
             }
         }
 
-        async function pollScan() {
+        function _resetScanButtons(clickedBtn, overviewBtn) {
+            if (clickedBtn) {
+                clickedBtn.disabled = false;
+                clickedBtn.textContent = clickedBtn.dataset.origLabel || 'Run Scan';
+                clickedBtn.classList.remove('scanning');
+            }
+            if (overviewBtn && overviewBtn !== clickedBtn) {
+                overviewBtn.disabled = false;
+                overviewBtn.textContent = 'Run Scan Now';
+                overviewBtn.classList.remove('scanning');
+            }
+        }
+
+        async function pollScan(clickedBtn) {
+            const overviewBtn = document.getElementById('scanBtn');
+
+            const safeText = (id, txt) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = txt;
+            };
+            const safeWidth = (id, w) => {
+                const el = document.getElementById(id);
+                if (el) el.style.width = w;
+            };
+
             const check = async () => {
-                const r = await fetch('/api/scan/status');
-                const d = await r.json();
-                const p = d.progress || {};
-
-                // Update progress bar
-                if (p.sources_total > 0) {
-                    const pct = Math.round((p.sources_done / p.sources_total) * 100);
-                    document.getElementById('progressBar').style.width = pct + '%';
-                    document.getElementById('progressCount').textContent = `${p.sources_done} / ${p.sources_total} sources`;
+                let d;
+                try {
+                    const r = await fetch('/api/scan/status');
+                    d = await r.json();
+                } catch (e) {
+                    setTimeout(check, 2000);
+                    return;
                 }
-                document.getElementById('progressStatus').textContent =
-                    p.current_platform ? `Scanning ${p.current_platform}...` : 'Starting...';
-                document.getElementById('progressSource').textContent =
-                    p.current_source || 'Initializing...';
-                document.getElementById('progressElapsed').textContent =
-                    (p.elapsed_seconds || 0) + 's';
-                document.getElementById('progressLeads').textContent =
-                    (p.leads_found_so_far || 0) + ' leads found';
+                const p = d.progress || {};
+                const mode = p.mode || 'community';
 
-                // Color the dot based on current platform
+                // Sources progress (community uses sources_total/done, directory uses platforms_total/done)
+                const total = p.sources_total || p.platforms_total || 0;
+                const done  = p.sources_done  || p.platforms_done  || 0;
+                if (total > 0) {
+                    const pct = Math.round((done / total) * 100);
+                    safeWidth('progressBar', pct + '%');
+                    safeText('progressCount', `${done} / ${total} ${mode === 'directory' ? 'sources' : 'sources'}`);
+                }
+
+                safeText('progressStatus', p.current_platform
+                    ? `Scanning ${p.current_platform}...`
+                    : 'Starting...');
+                safeText('progressSource', p.current_source || (mode === 'directory' ? 'Discovering businesses...' : 'Initializing...'));
+                safeText('progressElapsed', (p.elapsed_seconds || 0) + 's');
+                safeText('progressLeads', mode === 'directory'
+                    ? `${p.leads_found_so_far || 0} businesses found`
+                    : `${p.leads_found_so_far || 0} leads found`);
+
                 const dot = document.getElementById('progressDot');
-                dot.className = 'dot ' + (platformDotClass[p.current_platform] || '');
+                if (dot) dot.className = 'dot ' + (platformDotClass[p.current_platform] || '');
 
-                // Show errors if any
                 const errorsEl = document.getElementById('progressErrors');
-                const errors = p.errors || [];
-                if (errors.length > 0) {
-                    errorsEl.style.display = 'block';
-                    errorsEl.innerHTML = errors.map(e =>
-                        `<div style="font-size:11px;color:#f87171;padding:2px 0">&#9888; ${e}</div>`
-                    ).join('');
-                } else {
-                    errorsEl.style.display = 'none';
+                if (errorsEl) {
+                    const errors = p.errors || [];
+                    if (errors.length > 0) {
+                        errorsEl.style.display = 'block';
+                        errorsEl.innerHTML = errors.map(e =>
+                            `<div style="font-size:11px;color:#f87171;padding:2px 0">&#9888; ${e}</div>`
+                        ).join('');
+                    } else {
+                        errorsEl.style.display = 'none';
+                    }
                 }
 
                 if (!d.is_scanning) {
-                    const btn = document.getElementById('scanBtn');
-                    btn.disabled = false; btn.textContent = 'Run Scan Now'; btn.classList.remove('scanning');
+                    _resetScanButtons(clickedBtn, overviewBtn);
 
-                    // Show completion state briefly
-                    document.getElementById('progressStatus').textContent = 'Scan Complete!';
-                    document.getElementById('progressBar').style.width = '100%';
+                    safeText('progressStatus', 'Scan Complete!');
+                    safeWidth('progressBar', '100%');
+
                     if (d.last_scan) {
-                        document.getElementById('progressLeads').textContent = d.last_scan.leads_found + ' leads found';
-                        showToast(`Scan complete: ${d.last_scan.leads_found} leads found across ${d.last_scan.subreddits_scanned || 0} sources`);
+                        const ls = d.last_scan;
+                        const sourcesScanned = ls.sources_scanned || ls.subreddits_scanned || 0;
+                        if (mode === 'directory') {
+                            const count = ls.businesses_found || 0;
+                            safeText('progressLeads', count + ' businesses found');
+                            showToast(`Scan complete: ${count} businesses across ${ls.queries_run || 0} queries`);
+                            if (ls.errors && ls.errors.length) {
+                                showToast(`Errors during scan — see Overview tab progress panel`, true);
+                            }
+                            // refresh Businesses tab if visible
+                            if (document.querySelector('.nav-item.active')?.dataset.tab === 'businesses') {
+                                loadBusinesses();
+                            }
+                        } else {
+                            const count = ls.leads_found || 0;
+                            safeText('progressLeads', count + ' leads found');
+                            showToast(`Scan complete: ${count} leads found across ${sourcesScanned} sources`);
+                        }
                     }
 
-                    // Hide progress bar after 5s
                     setTimeout(() => {
-                        document.getElementById('scanProgress').classList.remove('active');
-                        document.getElementById('progressBar').style.width = '0%';
+                        const pr = document.getElementById('scanProgress');
+                        if (pr) pr.classList.remove('active');
+                        safeWidth('progressBar', '0%');
                     }, 5000);
 
                     loadStats();
