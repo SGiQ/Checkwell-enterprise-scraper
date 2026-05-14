@@ -12,7 +12,10 @@ import pytest
 from cwscraper.enrichment.base import EnrichmentContext
 from cwscraper.enrichment.website_scraper import (
     WebsiteScraper,
+    _decode_cf_email,
+    _deobfuscate,
     _discover_contact_pages,
+    _extract_jsonld_emails,
     _is_junk,
     _looks_like_name,
     _pick_primary_email,
@@ -252,3 +255,181 @@ def test_handles_request_failure(scraper):
         result = scraper.enrich(business, ctx)
     assert result is None
     assert any("fetch failed" in e for e in ctx.errors)
+
+
+# ----- Cloudflare email obfuscation -------------------------------------
+
+def test_decode_cf_email_roundtrip():
+    """The decoder must round-trip a known-good Cloudflare-encoded address."""
+    # Build a known good input: encode "owner@example.com" with key=0x4d
+    key = 0x4d
+    addr = "owner@example.com"
+    encoded = f"{key:02x}" + "".join(f"{ord(c) ^ key:02x}" for c in addr)
+    assert _decode_cf_email(encoded) == addr
+
+
+def test_decode_cf_email_rejects_garbage():
+    assert _decode_cf_email("not-hex") is None
+    assert _decode_cf_email("") is None
+    # Two valid hex bytes but result has no '@' — rejected
+    assert _decode_cf_email("4d4e4f") is None
+
+
+def test_cf_obfuscated_html_yields_real_email(scraper):
+    # Build a real CF-encoded email and embed it in the HTML.
+    key = 0x55
+    addr = "jane.doe@bayseniorcare.com"
+    encoded = f"{key:02x}" + "".join(f"{ord(c) ^ key:02x}" for c in addr)
+    html = f"""
+    <html><body>
+      <p>Reach our director:</p>
+      <a class="__cf_email__"
+         href="/cdn-cgi/l/email-protection#{encoded}"
+         data-cfemail="{encoded}">[email&#160;protected]</a>
+    </body></html>
+    """
+    business = {"website": "https://bayseniorcare.com", "name": "Bay"}
+    with patch("cwscraper.enrichment.website_scraper.requests.get",
+               side_effect=_patch_get({"bayseniorcare.com": html})):
+        result = scraper.enrich(business, EnrichmentContext())
+    assert result is not None
+    emails = [c["email"] for c in result.contacts]
+    assert "jane.doe@bayseniorcare.com" in emails
+
+
+# ----- Text obfuscation ---------------------------------------------------
+
+def test_deobfuscate_bracketed_at_dot():
+    assert _deobfuscate("info [at] example [dot] com") == "info@example.com"
+
+
+def test_deobfuscate_parens_at_dot():
+    assert _deobfuscate("info (at) example (dot) com") == "info@example.com"
+
+
+def test_deobfuscate_braces_at_dot():
+    assert _deobfuscate("info {at} example {dot} com") == "info@example.com"
+
+
+def test_deobfuscate_handles_extra_whitespace():
+    assert _deobfuscate("info  [ at ]  example  [ dot ]  com") == "info@example.com"
+
+
+def test_deobfuscate_word_form():
+    out = _deobfuscate("contact me at janet at homecare dot com today")
+    assert "janet@homecare.com" in out
+
+
+def test_deobfuscate_preserves_non_obfuscated_text():
+    # Should not mangle prose that just happens to contain "at" or "dot"
+    s = "We meet at noon and the dot product is awesome."
+    assert _deobfuscate(s) == s  # nothing email-shaped to rewrite
+
+
+def test_obfuscated_email_extracted_end_to_end(scraper):
+    html = """
+    <html><body>
+      <p>Email us: info [at] bayseniorcare [dot] com</p>
+    </body></html>
+    """
+    business = {"website": "https://bayseniorcare.com", "name": "Bay"}
+    with patch("cwscraper.enrichment.website_scraper.requests.get",
+               side_effect=_patch_get({"bayseniorcare.com": html})):
+        result = scraper.enrich(business, EnrichmentContext())
+    assert result is not None
+    emails = [c["email"] for c in result.contacts]
+    assert "info@bayseniorcare.com" in emails
+
+
+# ----- JSON-LD extraction ------------------------------------------------
+
+def test_jsonld_organization_email():
+    html = """
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Bay Senior Care",
+      "email": "info@bayseniorcare.com"
+    }
+    </script>
+    """
+    pairs = _extract_jsonld_emails(html)
+    emails = [e for e, _ in pairs]
+    assert "info@bayseniorcare.com" in emails
+
+
+def test_jsonld_contact_point_emails():
+    html = """
+    <script type="application/ld+json">
+    {
+      "@type": "LocalBusiness",
+      "contactPoint": [
+        {"@type": "ContactPoint", "contactType": "customer service",
+         "email": "support@homecare.com"},
+        {"@type": "ContactPoint", "contactType": "billing",
+         "email": "billing@homecare.com"}
+      ]
+    }
+    </script>
+    """
+    pairs = _extract_jsonld_emails(html)
+    by_email = {e: n for e, n in pairs}
+    assert by_email.get("support@homecare.com") == "customer service"
+    assert by_email.get("billing@homecare.com") == "billing"
+
+
+def test_jsonld_handles_invalid_json():
+    html = """
+    <script type="application/ld+json">{ not actually json }</script>
+    <script type="application/ld+json">
+    { "@type": "Organization", "email": "ok@homecare.com" }
+    </script>
+    """
+    pairs = _extract_jsonld_emails(html)
+    emails = [e for e, _ in pairs]
+    assert emails == ["ok@homecare.com"]
+
+
+def test_jsonld_email_field_as_list():
+    html = """
+    <script type="application/ld+json">
+    {"@type":"Organization","email":["a@homecare.com","b@homecare.com"]}
+    </script>
+    """
+    pairs = _extract_jsonld_emails(html)
+    emails = {e for e, _ in pairs}
+    assert emails == {"a@homecare.com", "b@homecare.com"}
+
+
+def test_jsonld_end_to_end_extracts_email(scraper):
+    html = """
+    <html><body>
+      <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"Organization",
+       "name":"Bay Senior Care","email":"hello@bayseniorcare.com"}
+      </script>
+    </body></html>
+    """
+    business = {"website": "https://bayseniorcare.com", "name": "Bay"}
+    with patch("cwscraper.enrichment.website_scraper.requests.get",
+               side_effect=_patch_get({"bayseniorcare.com": html})):
+        result = scraper.enrich(business, EnrichmentContext())
+    emails = [c["email"] for c in (result.contacts if result else [])]
+    assert "hello@bayseniorcare.com" in emails
+
+
+# ----- Expanded page discovery ------------------------------------------
+
+def test_discover_pages_finds_new_hint_types():
+    html = """
+    <a href="/management">Management</a>
+    <a href="/franchise-opportunities">Franchise</a>
+    <a href="/locations/tampa">Tampa Office</a>
+    <a href="/blog">Blog</a>
+    """
+    found = _discover_contact_pages(html, "https://homecare.com/")
+    assert any("management" in u for u in found)
+    assert any("franchise" in u for u in found)
+    assert any("locations" in u for u in found)
+    assert not any("blog" in u for u in found)
