@@ -255,7 +255,13 @@
         <div id="tab-overview" class="tab-content active">
             <div class="header">
                 <h2>Lead Overview</h2>
-                <button class="scan-btn" id="scanBtn" onclick="startScan(event)">Run Scan Now</button>
+                <button class="scan-btn" id="scanBtn" data-requires-mode="community" onclick="startScan(event)">Run Scan Now</button>
+            </div>
+
+            <div id="overviewModeMismatch" style="display:none;background:#1e293b;border:1px solid #3b82f6;border-left:3px solid #3b82f6;border-radius:6px;padding:14px 18px;margin-bottom:16px">
+                <strong style="color:#bfdbfe">Community mode required.</strong>
+                <span style="color:#cbd5e1">The active niche pack is a B2B (directory) pack. The Overview tab is community-scan focused. Switch to a community niche, or visit the Businesses tab.</span>
+                <button onclick="switchToFirstCommunityNiche()" style="margin-left:12px;background:#3b82f6;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Switch to community niche</button>
             </div>
 
             <!-- Scan Progress Bar -->
@@ -406,8 +412,13 @@
                 <div>
                     <a href="/api/businesses/export/csv" class="scan-btn" style="text-decoration:none;background:#475569;margin-right:8px">Export CSV</a>
                     <button class="scan-btn" id="enrichBtn" onclick="startEnrichment()" style="background:#7c3aed;margin-right:8px">Enrich Contacts</button>
-                    <button class="scan-btn" onclick="startScan(event)">Run Directory Scan</button>
+                    <button class="scan-btn" data-requires-mode="directory" onclick="startScan(event)">Run Directory Scan</button>
                 </div>
+            </div>
+            <div id="bizModeMismatch" style="display:none;background:#1e293b;border:1px solid #a855f7;border-left:3px solid #a855f7;border-radius:6px;padding:14px 18px;margin-bottom:16px">
+                <strong style="color:#e9d5ff">B2B mode required.</strong>
+                <span style="color:#cbd5e1">The active niche pack is a Community pack. Switch to a B2B (directory) pack to discover senior-care agencies via Google Places.</span>
+                <button onclick="switchToFirstDirectoryNiche()" style="margin-left:12px;background:#a855f7;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Switch to B2B niche now</button>
             </div>
             <div class="scan-progress" id="enrichProgress" style="display:none;background:#2e1065;border-color:#7c3aed">
                 <div class="progress-header">
@@ -1682,17 +1693,26 @@ ${d.body}</pre>`);
         }
 
         // ---------- Niche picker ----------------------------------------
+        // Tracked globally so other UI (banners, scan buttons) can react
+        // to mode-mismatches without re-fetching.
+        let activeNiche = null;
+        let availableNiches = [];
+
         async function loadNiches() {
             try {
                 const r = await fetch('/api/niches');
                 const d = await r.json();
+                availableNiches = d.available;
+                activeNiche = availableNiches.find(n => n.slug === d.active) || null;
+
                 const sel = document.getElementById('nicheSelect');
-                sel.innerHTML = d.available.map(n => {
+                sel.innerHTML = availableNiches.map(n => {
                     const modeTag = n.mode === 'directory' ? ' [B2B]' : ' [Community]';
                     const sel_attr = n.slug === d.active ? ' selected' : '';
                     return `<option value="${n.slug}"${sel_attr}>${n.display_name}${modeTag}</option>`;
                 }).join('');
-                _updateNicheBadge(d.available.find(n => n.slug === d.active));
+                _updateNicheBadge(activeNiche);
+                _updateModeAwareUI();
             } catch (e) { console.error('loadNiches failed', e); }
         }
 
@@ -1702,6 +1722,70 @@ ${d.body}</pre>`);
             const color = niche.mode === 'directory' ? '#a855f7' : '#3b82f6';
             const label = niche.mode === 'directory' ? 'B2B · businesses' : 'B2C · communities';
             badge.innerHTML = `<span style="color:${color}">●</span> ${label}`;
+        }
+
+        // Show/hide mode-mismatch banners + relabel scan buttons based on
+        // active niche mode. Called whenever the niche changes.
+        function _updateModeAwareUI() {
+            if (!activeNiche) return;
+            const isDirectory = activeNiche.mode === 'directory';
+
+            // Businesses tab banner — visible only when in community mode
+            const bizBanner = document.getElementById('bizModeMismatch');
+            if (bizBanner) {
+                bizBanner.style.display = isDirectory ? 'none' : 'block';
+            }
+            // Overview tab banner — visible only when in directory mode
+            const overviewBanner = document.getElementById('overviewModeMismatch');
+            if (overviewBanner) {
+                overviewBanner.style.display = isDirectory ? 'block' : 'none';
+            }
+
+            // Run Directory Scan button: disabled when in community mode
+            document.querySelectorAll('.scan-btn[data-requires-mode="directory"]').forEach(btn => {
+                if (isDirectory) {
+                    btn.disabled = false;
+                    btn.title = '';
+                    btn.style.opacity = '1';
+                } else {
+                    btn.disabled = true;
+                    btn.title = 'Switch to a B2B (directory) niche to enable this scan';
+                    btn.style.opacity = '0.4';
+                }
+            });
+            // Same for community-mode buttons
+            document.querySelectorAll('.scan-btn[data-requires-mode="community"]').forEach(btn => {
+                if (!isDirectory) {
+                    btn.disabled = false;
+                    btn.title = '';
+                    btn.style.opacity = '1';
+                } else {
+                    btn.disabled = true;
+                    btn.title = 'Switch to a community niche to enable this scan';
+                    btn.style.opacity = '0.4';
+                }
+            });
+        }
+
+        // Switch to the first available directory-mode niche (used by the banner CTA).
+        async function switchToFirstDirectoryNiche() {
+            const target = availableNiches.find(n => n.mode === 'directory');
+            if (!target) {
+                showToast('No directory-mode niche packs installed', true);
+                return;
+            }
+            document.getElementById('nicheSelect').value = target.slug;
+            await switchNiche(target.slug);
+        }
+
+        async function switchToFirstCommunityNiche() {
+            const target = availableNiches.find(n => n.mode === 'community' && n.slug !== 'blank');
+            if (!target) {
+                showToast('No community-mode niche packs installed', true);
+                return;
+            }
+            document.getElementById('nicheSelect').value = target.slug;
+            await switchNiche(target.slug);
         }
 
         async function switchNiche(slug) {
@@ -1719,7 +1803,9 @@ ${d.body}</pre>`);
                     // re-load to revert select to actual active niche
                     await loadNiches();
                 } else {
-                    _updateNicheBadge(d);
+                    activeNiche = availableNiches.find(n => n.slug === d.slug) || d;
+                    _updateNicheBadge(activeNiche);
+                    _updateModeAwareUI();
                     showToast(`Niche switched to ${d.display_name}`);
                     // Refresh the current tab + stats
                     loadStats();

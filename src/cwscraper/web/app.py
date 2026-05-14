@@ -258,8 +258,20 @@ def create_app() -> Flask:
     def api_scan():
         if ctx.engine.is_scanning:
             return jsonify({"error": "Scan already in progress"}), 409
+        # Optional client-side hint — refuse if caller expected a different mode.
+        data = request.get_json(silent=True) or {}
+        expected_mode = data.get("expected_mode")
+        if expected_mode and expected_mode != ctx.niche.mode:
+            return jsonify({
+                "error": (
+                    f"Active niche '{ctx.niche.slug}' is in {ctx.niche.mode} mode, "
+                    f"but caller requested {expected_mode} mode. Switch niches first."
+                ),
+                "active_niche": ctx.niche.slug,
+                "active_mode": ctx.niche.mode,
+            }), 409
         threading.Thread(target=ctx.engine.run_full_scan, daemon=True).start()
-        return jsonify({"status": "started"})
+        return jsonify({"status": "started", "mode": ctx.niche.mode})
 
     @app.route("/api/scan/status")
     def api_scan_status():
