@@ -784,13 +784,16 @@
                 ? `<a href="${b.website}" target="_blank" style="color:#60a5fa">website</a>`
                 : '<span style="color:#475569">—</span>';
             const phone = b.phone || '<span style="color:#475569">—</span>';
-            const email = b.email
-                ? `<a href="mailto:${b.email}" style="color:#4ade80">${b.email}</a>`
-                : '<span style="color:#475569">no email</span>';
             const stars = b.rating
                 ? `<span style="color:#fbbf24">${b.rating.toFixed(1)} ★</span> <small style="color:#64748b">(${b.review_count || 0})</small>`
                 : '<span style="color:#475569">—</span>';
-            return `<tr>
+            const emailRow = b.email
+                ? `<a href="mailto:${b.email}" style="color:#4ade80">${b.email}</a>
+                   <button onclick="event.stopPropagation(); openContactEditor('${b.id}', ${JSON.stringify(b.email).replace(/"/g,'&quot;')})"
+                     title="Edit email" style="background:transparent;border:0;color:#64748b;cursor:pointer;font-size:11px;padding:0 4px">✏</button>`
+                : `<button onclick="event.stopPropagation(); openContactEditor('${b.id}', '')"
+                     style="background:transparent;border:1px dashed #475569;color:#94a3b8;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:3px">+ add email</button>`;
+            return `<tr id="bizrow-${b.id}">
                 <td>
                     <div style="font-weight:600">${b.name || '(unnamed)'}</div>
                     <small style="color:#64748b">${b.category || ''}</small>
@@ -802,12 +805,13 @@
                 <td>
                     <div>${phone}</div>
                     <div>${site}</div>
-                    <div>${email}</div>
+                    <div style="margin-top:2px">${emailRow}</div>
                 </td>
                 <td>${stars}</td>
                 <td>${bizStatusBadge(b.status)}</td>
                 <td>
                     <button onclick="draftOutreach('${b.id}')" style="background:#0ea5e9;color:#fff;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-bottom:4px;display:block;width:100%">Draft Email</button>
+                    <button onclick="reEnrichOne('${b.id}')" style="background:#7c3aed;color:#fff;border:0;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-bottom:4px;display:block;width:100%">Re-enrich</button>
                     <select onchange="updateBizStatus('${b.id}', this.value)" style="background:#0f172a;color:#e2e8f0;border:1px solid #334155;padding:5px;border-radius:4px;font-size:11px;width:100%">
                         <option value="">change status…</option>
                         <option value="qualified">Qualified</option>
@@ -817,6 +821,111 @@
                     </select>
                 </td>
             </tr>`;
+        }
+
+        // ---------- Contact editor (manual email entry) -----------------
+        function openContactEditor(businessId, currentEmail) {
+            const row = document.getElementById('bizrow-' + businessId);
+            if (!row) return;
+            // If an editor row already exists, just focus it.
+            const existing = document.getElementById('bizedit-' + businessId);
+            if (existing) { existing.querySelector('input[type=email]').focus(); return; }
+
+            const editorRow = document.createElement('tr');
+            editorRow.id = 'bizedit-' + businessId;
+            editorRow.innerHTML = `<td colspan="6" style="background:#0f172a;padding:14px">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <input type="email" id="ce_email_${businessId}" placeholder="contact@example.com" value="${currentEmail || ''}"
+                        style="flex:1;min-width:200px;padding:7px 10px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
+                    <input type="text" id="ce_name_${businessId}" placeholder="Name (optional)"
+                        style="flex:1;min-width:140px;padding:7px 10px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
+                    <input type="text" id="ce_title_${businessId}" placeholder="Title (optional)"
+                        style="flex:1;min-width:140px;padding:7px 10px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px">
+                    <button onclick="saveContactEditor('${businessId}')"
+                        style="background:#22c55e;color:#fff;border:0;padding:7px 14px;border-radius:4px;cursor:pointer;font-size:12px">Save</button>
+                    <button onclick="closeContactEditor('${businessId}')"
+                        style="background:#475569;color:#fff;border:0;padding:7px 14px;border-radius:4px;cursor:pointer;font-size:12px">Cancel</button>
+                    ${currentEmail ? `<button onclick="clearContactEmail('${businessId}')"
+                        title="Wipe the email so the next enricher pass picks it up again"
+                        style="background:transparent;color:#fca5a5;border:1px solid #7f1d1d;padding:7px 12px;border-radius:4px;cursor:pointer;font-size:12px">Clear</button>` : ''}
+                </div>
+            </td>`;
+            row.parentNode.insertBefore(editorRow, row.nextSibling);
+            editorRow.querySelector('input[type=email]').focus();
+        }
+
+        function closeContactEditor(businessId) {
+            const editor = document.getElementById('bizedit-' + businessId);
+            if (editor) editor.remove();
+        }
+
+        async function saveContactEditor(businessId) {
+            const email = document.getElementById('ce_email_' + businessId).value.trim();
+            const name  = document.getElementById('ce_name_' + businessId).value.trim();
+            const title = document.getElementById('ce_title_' + businessId).value.trim();
+            if (!email) { showToast('Email is required', true); return; }
+
+            const body = {email};
+            if (name || title) {
+                body.contacts = [{name, title, email, source_url: 'manual'}];
+            }
+
+            try {
+                const r = await fetch(`/api/businesses/${businessId}/contact`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                });
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                showToast('Contact saved');
+                closeContactEditor(businessId);
+                loadBusinesses();
+            } catch (e) {
+                showToast('Save failed: ' + e.message, true);
+            }
+        }
+
+        async function clearContactEmail(businessId) {
+            if (!confirm('Clear the email for this business? Next enricher run will try to find it again.')) return;
+            try {
+                const r = await fetch(`/api/businesses/${businessId}/contact`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: ''}),
+                });
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                showToast('Email cleared');
+                closeContactEditor(businessId);
+                loadBusinesses();
+            } catch (e) {
+                showToast('Clear failed: ' + e.message, true);
+            }
+        }
+
+        // ---------- Re-enrich a single business -------------------------
+        async function reEnrichOne(businessId) {
+            const enricher = document.getElementById('enricherChoice').value;
+            const label = enricher === 'playwright' ? 'Rendering…' : 'Searching…';
+            showToast(`${label} this site`);
+            try {
+                const r = await fetch(`/api/businesses/${businessId}/enrich`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enricher, clear_first: true}),
+                });
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                if (d.email) {
+                    showToast(`Found: ${d.email} (${d.contacts_found} contact${d.contacts_found === 1 ? '' : 's'})`);
+                } else {
+                    showToast('No contacts found on the site' + (d.errors?.length ? ` (${d.errors.length} error${d.errors.length === 1 ? '' : 's'})` : ''), true);
+                }
+                loadBusinesses();
+            } catch (e) {
+                showToast('Re-enrich failed: ' + e.message, true);
+            }
         }
 
         async function loadBusinesses() {

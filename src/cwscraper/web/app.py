@@ -503,20 +503,102 @@ def create_app() -> Flask:
 
     @app.route("/api/businesses/<business_id>/contact", methods=["POST"])
     def api_update_business_contact(business_id):
-        """Append/update contact info on a business lead.
+        """Manually set contact info on a business lead.
 
         Body: {email?: str, contacts?: [{name, title, email, phone}]}
+        Empty string for `email` clears the field (so it can be re-enriched).
         """
+        import re as _re
         data = request.get_json() or {}
         patch = {}
         if "email" in data:
-            patch["email"] = data["email"]
+            email = (data["email"] or "").strip().lower()
+            if email and not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", email):
+                return jsonify({"error": f"Invalid email format: {email!r}"}), 400
+            patch["email"] = email
         if "contacts" in data:
-            patch["contacts"] = data["contacts"]
+            if not isinstance(data["contacts"], list):
+                return jsonify({"error": "contacts must be an array"}), 400
+            cleaned = []
+            for c in data["contacts"]:
+                if not isinstance(c, dict):
+                    continue
+                email = (c.get("email") or "").strip().lower()
+                if email and not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", email):
+                    return jsonify({"error": f"Invalid email format in contacts: {email!r}"}), 400
+                cleaned.append({
+                    "name":  (c.get("name") or "").strip(),
+                    "title": (c.get("title") or "").strip(),
+                    "email": email,
+                    "phone": (c.get("phone") or "").strip(),
+                    "source_url": (c.get("source_url") or "manual").strip(),
+                })
+            patch["contacts"] = cleaned
         if not patch:
             return jsonify({"error": "Provide email and/or contacts"}), 400
         repo.update_business(business_id, patch)
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "patch": patch})
+
+    @app.route("/api/businesses/<business_id>/enrich", methods=["POST"])
+    def api_enrich_one_business(business_id):
+        """Run an enricher on a single business synchronously and return the result.
+
+        Body: {enricher?: 'website'|'playwright', clear_first?: bool}
+        clear_first=true wipes the existing email/contacts so the enricher
+        actually re-runs (otherwise only_missing_email=true would skip it).
+        """
+        from cwscraper.enrichment import ALL_ENRICHERS
+        from cwscraper.enrichment.base import EnrichmentContext
+
+        data = request.get_json(silent=True) or {}
+        enricher_slug = data.get("enricher", "website")
+        clear_first = bool(data.get("clear_first", True))
+
+        if enricher_slug not in ALL_ENRICHERS:
+            return jsonify({
+                "error": f"Unknown enricher '{enricher_slug}'. Available: {sorted(ALL_ENRICHERS)}"
+            }), 400
+
+        biz = next((b for b in repo.get_businesses() if b.get("id") == business_id), None)
+        if not biz:
+            return jsonify({"error": "Business not found"}), 404
+        if not biz.get("website"):
+            return jsonify({"error": "Business has no website to scrape"}), 422
+
+        if clear_first:
+            repo.update_business(business_id, {"email": "", "contacts": []})
+            biz["email"] = ""
+            biz["contacts"] = []
+
+        scraper = ALL_ENRICHERS[enricher_slug]()
+        enrich_ctx = EnrichmentContext(businesses_total=1)
+        try:
+            result = scraper.enrich(biz, enrich_ctx)
+        except Exception as e:
+            return jsonify({"error": f"Enrichment failed: {e}"}), 500
+
+        if result and (result.email or result.contacts):
+            patch = {}
+            if result.email:
+                patch["email"] = result.email
+            if result.contacts:
+                patch["contacts"] = result.contacts
+            repo.update_business(business_id, patch)
+            return jsonify({
+                "ok": True,
+                "email": result.email,
+                "contacts_found": len(result.contacts),
+                "contacts": result.contacts,
+            })
+
+        return jsonify({
+            "ok": True,
+            "email": "",
+            "contacts_found": 0,
+            "contacts": [],
+            "message": "Enricher ran but found no contacts",
+            "errors": enrich_ctx.errors,
+        })
 
     @app.route("/api/businesses/stats")
     def api_business_stats():
