@@ -78,6 +78,10 @@ A niche pack is a single YAML file under `src/cwscraper/niches/` that defines ei
 | `assisted_living_facilities_se` | Directory | ALF operators across SE US |
 | `memory_care_facilities_se` | Directory | Dementia care communities |
 | `geriatric_care_managers_us` | Directory | Aging Life Care professionals — national |
+| `churches_se` | Directory | Faith communities (member-care ministry referral partners) |
+| `mental_health_practices_se` | Directory | Therapy / counseling practices (caregiver-burnout + elderly-patient angles) |
+| `drug_rehab_centers_se` | Directory | Addiction treatment + recovery centers (post-discharge support) |
+| `outpatient_clinics_se` | Directory | Outpatient + ambulatory surgery centers (post-procedure follow-up) |
 
 ### Building your own
 

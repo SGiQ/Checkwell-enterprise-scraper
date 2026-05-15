@@ -1,0 +1,108 @@
+slug: outpatient_clinics_se
+display_name: Outpatient Clinics & Surgery Centers — Southeast US
+mode: directory
+description: |
+  Outpatient medical clinics, ambulatory surgery centers, and outpatient
+  rehab/PT across FL/GA/SC/NC/TN. The fit for wellness checks is
+  post-procedure: the 1-7 days after a same-day surgery or procedure
+  are where elderly patients (a) skip post-op meds, (b) under-report
+  pain or infection signs, and (c) have falls during recovery. Daily
+  wellness check calls catch these between the discharge call and the
+  follow-up appointment.
+
+directory:
+  category_label: outpatient_clinic
+  search_queries:
+    - outpatient clinic
+    - ambulatory surgery center
+    - outpatient surgery center
+    - outpatient medical center
+    - urgent care center
+  locations:
+    - Miami, FL
+    - Fort Lauderdale, FL
+    - Tampa, FL
+    - St. Petersburg, FL
+    - Orlando, FL
+    - Jacksonville, FL
+    - Naples, FL
+    - Sarasota, FL
+    - Atlanta, GA
+    - Savannah, GA
+    - Augusta, GA
+    - Charleston, SC
+    - Columbia, SC
+    - Greenville, SC
+    - Charlotte, NC
+    - Raleigh, NC
+    - Greensboro, NC
+    - Asheville, NC
+    - Nashville, TN
+    - Memphis, TN
+    - Knoxville, TN
+    - Chattanooga, TN
+  min_rating: 3.5
+  max_per_query: 20
+
+default_outreach_template: post_procedure
+outreach_templates:
+  - key: post_procedure
+    name: Cold Email — Post-Procedure Follow-up
+    subject: "Post-procedure wellness calls for {business_name}'s older patients"
+    body: |
+      Hi {contact_name},
+
+      The week after an outpatient procedure is where older patients
+      tend to slip: skipped post-op meds, under-reported pain or
+      infection signs, falls during recovery, missed first follow-up
+      because they forgot or didn't have transportation. {business_name}'s
+      pre-/post-op call is one touchpoint — the in-between days are the
+      gap.
+
+      CheckWellCall does daily wellness check calls during recovery
+      windows. We escalate immediately to your patient-relations team
+      (or family) when something doesn't fit the expected recovery
+      pattern. Clients describe it as "what concierge medicine charges
+      $5k for, at a price our patients' families can actually budget."
+
+      A few SE US outpatient centers use us on a post-procedure
+      partnership basis. Worth a 15-minute call to explore whether it
+      could fit {business_name}'s aftercare workflow?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+      1-877-343-1891 | checkwellcall.com
+
+  - key: readmission_reduction
+    name: Cold Email — Readmission Reduction Angle
+    subject: "Reducing avoidable readmissions for {business_name}"
+    body: |
+      Hi {contact_name},
+
+      Most avoidable post-procedure readmissions for elderly outpatients
+      come from the same handful of misses in the first week home:
+      meds skipped, complications under-reported, recovery instructions
+      that didn't actually land.
+
+      CheckWellCall catches those daily by phone — a real conversation,
+      not a portal nudge — with documented escalation back to
+      {business_name}'s clinical team. Worth a call about how this might
+      reduce {business_name}'s 7- and 30-day readmission numbers?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+
+  - key: follow_up
+    name: Cold Email — Follow-up
+    subject: "Following up — post-procedure wellness calls"
+    body: |
+      Hi {contact_name},
+
+      Following up on the note about post-procedure wellness call
+      support for {business_name}'s older patients. Happy to send a
+      brief case study if a call doesn't fit right now.
+
+      Best,
+      Shaun

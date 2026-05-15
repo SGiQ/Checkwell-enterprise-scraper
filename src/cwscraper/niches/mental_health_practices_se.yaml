@@ -1,0 +1,112 @@
+slug: mental_health_practices_se
+display_name: Mental Health Practices — Southeast US
+mode: directory
+description: |
+  Therapy practices, counseling centers, and psychiatric services across
+  FL/GA/SC/NC/TN. Two angles into this niche:
+    1. Practices treating elderly patients (anxiety, depression, isolation
+       in seniors) — daily wellness checks support between-session continuity
+    2. Practices treating CAREGIVERS (sandwich-generation burnout, anticipatory
+       grief, anxiety about aging parents) — wellness checks for the patient's
+       parent often *is* the intervention
+  The second angle is the warmer pitch — caregiver-clinic referral partnerships.
+
+directory:
+  category_label: mental_health_practice
+  search_queries:
+    - mental health practice
+    - counseling center
+    - therapy clinic
+    - psychiatric services
+    - geriatric psychiatry
+  locations:
+    - Miami, FL
+    - Fort Lauderdale, FL
+    - Tampa, FL
+    - St. Petersburg, FL
+    - Orlando, FL
+    - Jacksonville, FL
+    - Naples, FL
+    - Sarasota, FL
+    - Atlanta, GA
+    - Savannah, GA
+    - Augusta, GA
+    - Charleston, SC
+    - Columbia, SC
+    - Greenville, SC
+    - Charlotte, NC
+    - Raleigh, NC
+    - Greensboro, NC
+    - Asheville, NC
+    - Nashville, TN
+    - Memphis, TN
+    - Knoxville, TN
+    - Chattanooga, TN
+  min_rating: 4.0
+  max_per_query: 20
+
+default_outreach_template: caregiver_burnout_angle
+
+outreach_templates:
+  - key: caregiver_burnout_angle
+    name: Cold Email — Caregiver Burnout Angle (warmer)
+    subject: "A practical tool for {business_name}'s caregiver-clients"
+    body: |
+      Hi {contact_name},
+
+      A common pattern in caregiver-burnout therapy: the client knows
+      what they need to do, but can't actually rest because the "is mom
+      okay today?" anxiety never turns off. The intervention they need
+      isn't more cognitive work — it's removing that 24/7 monitoring
+      burden.
+
+      CheckWellCall provides exactly that: a daily wellness check call
+      to the aging parent, with documented escalation to the caregiver
+      only when something's actually wrong. Most of our caregiver-clients
+      describe it as "the first night I slept through in a year."
+
+      We work with several therapy practices in {city} as a soft-referral
+      partnership — your clients get a real tool, you get a partner that
+      makes therapy work better. Worth a 15-minute call to see if there's
+      a fit for {business_name}?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+      1-877-343-1891 | checkwellcall.com
+
+  - key: elderly_patient_angle
+    name: Cold Email — Treating Elderly Patients Directly
+    subject: "Between-session continuity for {business_name}'s older patients"
+    body: |
+      Hi {contact_name},
+
+      For older patients who live alone, weekly therapy is sometimes
+      the only structured conversation they have all week. The other
+      six days are where isolation, missed meds, and quiet decline can
+      go unnoticed.
+
+      CheckWellCall does daily wellness check calls — friendly, scripted,
+      with escalation to family or the practice if something concerning
+      comes up. We can give {business_name}'s patients (with their
+      consent) a daily touchpoint that complements the therapeutic
+      work without adding to your team's load.
+
+      Open to a 15-minute call to see if a partnership makes sense?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+
+  - key: follow_up
+    name: Cold Email — Follow-up
+    subject: "Following up — wellness check support for {business_name}"
+    body: |
+      Hi {contact_name},
+
+      Circling back on the note about wellness check support for your
+      caregiver-clients (or their parents). Happy to send a brief
+      one-pager if a call doesn't fit right now.
+
+      Best,
+      Shaun

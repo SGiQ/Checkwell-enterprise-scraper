@@ -42,6 +42,10 @@ def test_all_bundled_directory_packs_load_cleanly():
         "assisted_living_facilities_se",
         "memory_care_facilities_se",
         "geriatric_care_managers_us",
+        "churches_se",
+        "mental_health_practices_se",
+        "drug_rehab_centers_se",
+        "outpatient_clinics_se",
     ]
     available = {n["slug"] for n in list_bundled_niches()}
     for slug in expected_directory_packs:
@@ -51,9 +55,12 @@ def test_all_bundled_directory_packs_load_cleanly():
         assert pack.directory.search_queries, f"{slug} has no search_queries"
         assert pack.directory.locations, f"{slug} has no locations"
         assert pack.outreach_templates, f"{slug} has no outreach_templates"
-        # Cold-intro template must exist for the dashboard's Draft Email button
-        assert any(t.key == "cold_intro" for t in pack.outreach_templates), (
-            f"{slug} missing 'cold_intro' outreach template"
+        # The pack's declared default template must actually resolve, since
+        # the Draft Email button falls back to default_outreach_template
+        # when no key is supplied.
+        assert pack.outreach_template(pack.default_outreach_template) is not None, (
+            f"{slug}: default_outreach_template '{pack.default_outreach_template}' "
+            f"not found in outreach_templates"
         )
 
 
