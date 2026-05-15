@@ -34,6 +34,29 @@ def test_list_bundled_niches_includes_modes():
     assert "directory" in modes
 
 
+def test_all_bundled_directory_packs_load_cleanly():
+    """All shipped B2B packs must load and have non-empty essentials."""
+    expected_directory_packs = [
+        "senior_care_agencies_se",
+        "home_health_agencies_se",
+        "assisted_living_facilities_se",
+        "memory_care_facilities_se",
+        "geriatric_care_managers_us",
+    ]
+    available = {n["slug"] for n in list_bundled_niches()}
+    for slug in expected_directory_packs:
+        assert slug in available, f"missing bundled pack: {slug}"
+        pack = load_niche(slug)
+        assert pack.mode == "directory"
+        assert pack.directory.search_queries, f"{slug} has no search_queries"
+        assert pack.directory.locations, f"{slug} has no locations"
+        assert pack.outreach_templates, f"{slug} has no outreach_templates"
+        # Cold-intro template must exist for the dashboard's Draft Email button
+        assert any(t.key == "cold_intro" for t in pack.outreach_templates), (
+            f"{slug} missing 'cold_intro' outreach template"
+        )
+
+
 # --- AppContext tests ---
 
 @pytest.fixture

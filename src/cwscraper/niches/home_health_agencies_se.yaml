@@ -1,0 +1,100 @@
+slug: home_health_agencies_se
+display_name: Home Health Agencies — Southeast US
+mode: directory
+description: |
+  Medicare-certified home health agencies across FL/GA/SC/NC/TN. These are
+  the medical (skilled-nursing, PT, OT, speech) home-care providers — distinct
+  from non-medical "home care" agencies. Different decision-makers (clinical
+  director, agency administrator) than the senior_care_agencies pack, and
+  higher per-account value because they serve more complex clients.
+
+directory:
+  category_label: home_health_agency
+  search_queries:
+    - home health agency
+    - medicare home health
+    - skilled nursing home care
+    - home health care services
+  locations:
+    - Miami, FL
+    - Fort Lauderdale, FL
+    - Tampa, FL
+    - St. Petersburg, FL
+    - Orlando, FL
+    - Jacksonville, FL
+    - Naples, FL
+    - Sarasota, FL
+    - Atlanta, GA
+    - Savannah, GA
+    - Augusta, GA
+    - Charleston, SC
+    - Columbia, SC
+    - Greenville, SC
+    - Charlotte, NC
+    - Raleigh, NC
+    - Greensboro, NC
+    - Asheville, NC
+    - Nashville, TN
+    - Memphis, TN
+    - Knoxville, TN
+    - Chattanooga, TN
+  min_rating: 3.5
+  max_per_query: 20
+
+default_outreach_template: cold_intro
+
+outreach_templates:
+  - key: cold_intro
+    name: Cold Email — Home Health Partnership
+    subject: "Wellness checks between {business_name}'s home-health visits"
+    body: |
+      Hi {contact_name},
+
+      Home health visits are scheduled — but the days in between are where
+      a lot of slow declines hide. CheckWellCall does daily wellness check
+      calls that catch things between your clinicians' visits: confusion,
+      withdrawal, missed meals, signs a fall happened off the record.
+
+      A few {city} home health agencies use us as:
+        • An early-warning layer between scheduled visits
+        • A family-facing "we're still watching them" touch the agency owns
+        • A retention play for clients whose families were considering
+          stepping down service
+
+      Worth a 15-minute call to see if there's a fit for {business_name}?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+      1-877-343-1891 | checkwellcall.com
+
+  - key: follow_up
+    name: Cold Email — Follow-up
+    subject: "Following up — between-visit wellness checks"
+    body: |
+      Hi {contact_name},
+
+      Circling back on the note about wellness checks for {business_name}'s
+      home-health clients. No pressure — happy to send a one-pager if a call
+      isn't useful right now.
+
+      Best,
+      Shaun
+
+  - key: referral_partner
+    name: Cold Email — Referral Partner
+    subject: "{city} clients who need more than a wellness check call"
+    body: |
+      Hi {contact_name},
+
+      We do daily wellness checks for adult children of aging parents in
+      {city}, {state}. Some of our calls escalate to "this client needs
+      home-health visits now" — and right now we don't have a great
+      referral list in {city}.
+
+      Could {business_name} be on it? Quick intro call to see if you're
+      taking new referrals?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall

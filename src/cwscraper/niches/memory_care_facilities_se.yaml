@@ -1,0 +1,104 @@
+slug: memory_care_facilities_se
+display_name: Memory Care Facilities — Southeast US
+mode: directory
+description: |
+  Memory care / dementia care facilities across FL/GA/SC/NC/TN. Smaller
+  universe than general ALFs but very mission-aligned for wellness checks —
+  many families try home-based dementia care first before transitioning,
+  and our daily call is often what catches the moment the home setup
+  stops being safe.
+
+directory:
+  category_label: memory_care_facility
+  search_queries:
+    - memory care facility
+    - dementia care community
+    - Alzheimer's care home
+    - memory care assisted living
+  locations:
+    - Miami, FL
+    - Fort Lauderdale, FL
+    - Tampa, FL
+    - St. Petersburg, FL
+    - Orlando, FL
+    - Jacksonville, FL
+    - Naples, FL
+    - Sarasota, FL
+    - The Villages, FL
+    - Atlanta, GA
+    - Savannah, GA
+    - Augusta, GA
+    - Charleston, SC
+    - Columbia, SC
+    - Greenville, SC
+    - Charlotte, NC
+    - Raleigh, NC
+    - Asheville, NC
+    - Nashville, TN
+    - Memphis, TN
+    - Knoxville, TN
+  min_rating: 3.5
+  max_per_query: 20
+
+default_outreach_template: cold_intro
+
+outreach_templates:
+  - key: cold_intro
+    name: Cold Email — Memory Care Partnership
+    subject: "Catching home-dementia decline early: wellness checks for {business_name}'s referral pipeline"
+    body: |
+      Hi {contact_name},
+
+      Most {city} memory care admissions come from families who said
+      "we'll do this at home as long as we can." That phase often lasts
+      6-18 months, and the moment it stops being safe is usually invisible
+      until a fall or a wandering incident forces the decision.
+
+      CheckWellCall does daily wellness check calls for those families.
+      The repeated daily conversations are what surface the slow declines
+      — confusion patterns, missed meals, increasingly anxious tone —
+      that signal "it's time to look at memory care."
+
+      Two ways {business_name} could partner with us:
+        • Families we work with who move to facility care often need a
+          short list of trusted local memory care options
+        • For your current residents whose families live out of state,
+          weekly family check-in calls keep them engaged and reduce
+          'distant family second-guessing'
+
+      Worth a 15-minute call to talk it through?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+      1-877-343-1891 | checkwellcall.com
+
+  - key: follow_up
+    name: Cold Email — Follow-up
+    subject: "Following up — memory care partnership"
+    body: |
+      Hi {contact_name},
+
+      Circling back on the wellness check partnership note for
+      {business_name}. Happy to send a brief overview if a call doesn't
+      fit right now.
+
+      Best,
+      Shaun
+
+  - key: referral_partner
+    name: Cold Email — Referral Source
+    subject: "Memory care referrals in {city}"
+    body: |
+      Hi {contact_name},
+
+      We work with families in {city}, {state} whose parent has a
+      dementia diagnosis. When home care stops being viable we refer to
+      vetted local memory care communities.
+
+      Could {business_name} be on our short list? Quick call to see if
+      you're accepting new inquiries?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall

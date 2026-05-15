@@ -1,0 +1,111 @@
+slug: geriatric_care_managers_us
+display_name: Geriatric Care Managers — National (US)
+mode: directory
+description: |
+  Geriatric care managers (GCMs) / aging life care professionals — typically
+  solo practitioners or small firms who coordinate care for affluent families
+  with complex eldercare situations. Small national pool (~2-3k professionals
+  in the Aging Life Care Association), but they're gold-tier referral partners:
+  one GCM can drive 10+ wellness check signups per year because they're
+  trusted advisors to multiple families simultaneously.
+
+directory:
+  category_label: geriatric_care_manager
+  search_queries:
+    - geriatric care manager
+    - aging life care professional
+    - elder care consultant
+    - senior care manager
+    - care manager elderly
+  locations:
+    # Top metros by senior population + GCM density
+    - Miami, FL
+    - Tampa, FL
+    - Orlando, FL
+    - Naples, FL
+    - Sarasota, FL
+    - Boca Raton, FL
+    - Atlanta, GA
+    - Charlotte, NC
+    - Raleigh, NC
+    - Charleston, SC
+    - Nashville, TN
+    - New York, NY
+    - Boston, MA
+    - Washington, DC
+    - Philadelphia, PA
+    - Chicago, IL
+    - Los Angeles, CA
+    - San Francisco, CA
+    - San Diego, CA
+    - Seattle, WA
+    - Portland, OR
+    - Denver, CO
+    - Phoenix, AZ
+    - Scottsdale, AZ
+    - Austin, TX
+    - Dallas, TX
+    - Houston, TX
+    - Minneapolis, MN
+  min_rating: 4.0      # higher bar: GCMs trade on reputation
+  max_per_query: 20
+
+default_outreach_template: cold_intro
+
+outreach_templates:
+  - key: cold_intro
+    name: Cold Email — GCM Referral Partner
+    subject: "Wellness checks as a tool for {business_name}'s out-of-state families"
+    body: |
+      Hi {contact_name},
+
+      You probably have several clients in {city} whose adult children live
+      out of state and ask you variations of "is mom really OK between
+      visits?" CheckWellCall is built for exactly that question: daily
+      wellness check calls, with documented escalation to the care manager
+      or family when something's off.
+
+      A few ways we work with care managers:
+        • White-label option: calls go out under your firm's name with our
+          team handling the actual call workflow
+        • Direct referral: we pay a referral fee on signups you send
+        • Co-branded family-facing dashboard so families see the wellness
+          report alongside your care plan updates
+
+      Worth a 20-minute call to see if there's a fit? Happy to send a
+      one-pager first if that's easier.
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+      1-877-343-1891 | checkwellcall.com
+
+  - key: follow_up
+    name: Cold Email — Follow-up
+    subject: "Following up — wellness check workflow for {business_name}"
+    body: |
+      Hi {contact_name},
+
+      Following up on the note about wellness check workflows for care
+      manager firms. If now isn't the right time, no problem — happy to
+      reconnect in a quarter or two.
+
+      Best,
+      Shaun
+
+  - key: white_label
+    name: Cold Email — White-label Pitch
+    subject: "White-label daily wellness checks for {business_name}'s clients"
+    body: |
+      Hi {contact_name},
+
+      Quick one: would a white-labeled daily wellness check service
+      strengthen what {business_name} offers your families? We do the call
+      workflow, you keep the client relationship and brand. Pricing is
+      designed to give you margin on every account.
+
+      Open to a quick call to talk through the structure?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall

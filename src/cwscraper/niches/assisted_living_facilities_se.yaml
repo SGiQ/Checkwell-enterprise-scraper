@@ -1,0 +1,107 @@
+slug: assisted_living_facilities_se
+display_name: Assisted Living Facilities — Southeast US
+mode: directory
+description: |
+  Assisted living facilities (ALFs) across FL/GA/SC/NC/TN. Operators and
+  administrators are the buying audience here. Different angle than home
+  care: residents already in facility care, but wellness checks help with
+  the "former resident moving back home" and "resident's family member who
+  also needs support" use cases.
+
+directory:
+  category_label: assisted_living_facility
+  search_queries:
+    - assisted living facility
+    - assisted living community
+    - senior living community
+    - retirement community
+  locations:
+    - Miami, FL
+    - Fort Lauderdale, FL
+    - Tampa, FL
+    - St. Petersburg, FL
+    - Orlando, FL
+    - Jacksonville, FL
+    - Naples, FL
+    - Sarasota, FL
+    - The Villages, FL
+    - Boca Raton, FL
+    - Atlanta, GA
+    - Savannah, GA
+    - Augusta, GA
+    - Athens, GA
+    - Charleston, SC
+    - Hilton Head, SC
+    - Columbia, SC
+    - Greenville, SC
+    - Charlotte, NC
+    - Raleigh, NC
+    - Greensboro, NC
+    - Asheville, NC
+    - Wilmington, NC
+    - Nashville, TN
+    - Memphis, TN
+    - Knoxville, TN
+    - Chattanooga, TN
+  min_rating: 3.5
+  max_per_query: 20
+
+default_outreach_template: cold_intro
+
+outreach_templates:
+  - key: cold_intro
+    name: Cold Email — ALF Partnership
+    subject: "Wellness checks for {business_name}'s 'aging in place at home' families"
+    body: |
+      Hi {contact_name},
+
+      A lot of {business_name}'s inquiries probably come from families who
+      first try to keep mom or dad at home before considering a move to
+      {city} senior living. CheckWellCall fills the gap during that
+      "still at home but we're worried" phase with daily wellness check
+      calls.
+
+      Two reasons this matters for {business_name}:
+        • Families who use us and eventually need more care often move
+          their loved one to a partner facility — happy to refer to you
+        • For your residents whose adult children live out of state,
+          weekly check-in calls to those families builds the kind of
+          trust that grows referrals
+
+      Open to a 15-minute call to talk through what a partnership could
+      look like?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
+      1-877-343-1891 | checkwellcall.com
+
+  - key: follow_up
+    name: Cold Email — Follow-up
+    subject: "Quick follow-up — wellness checks + {business_name}"
+    body: |
+      Hi {contact_name},
+
+      Following up on the wellness check partnership note. No pressure
+      either way — happy to circle back in a quarter if now isn't the
+      right time.
+
+      Best,
+      Shaun
+
+  - key: referral_partner
+    name: Cold Email — Referral Source
+    subject: "Sending {city} families your way"
+    body: |
+      Hi {contact_name},
+
+      We work with families in {city}, {state} who eventually realize
+      keeping their parent at home isn't sustainable. When that happens
+      we like to refer to vetted local ALFs.
+
+      Could {business_name} be on our short list? Quick intro call to
+      see if you're taking inquiries?
+
+      Best,
+      Shaun
+      SGiQ Business Strategies | CheckWellCall
