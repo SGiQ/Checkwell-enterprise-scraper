@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cwscraper"
-version = "0.1.0"
+version = "0.2.0"
 description = "Enterprise community lead scraper. Pluggable niche packs, multi-platform (Reddit, YouTube, HackerNews), with reply drafting and OAuth posting."
 readme = "README.md"
 requires-python = ">=3.10"

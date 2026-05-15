@@ -57,30 +57,47 @@ Two segments, one codebase:
 
 ## Roadmap
 
-### Phase 1 — Standalone v0.1 *(complete)*
+### Phase 1 — Standalone v0.1 *(complete — May 2026)*
 - Fork lead-agent code into standalone repo
 - Extract scanners from the 1,800-line monolith into clean per-platform modules
 - Serialize caregiver keywords as `niches/caregiver.yaml`
 - JSON storage behind `Repository` interface
 - CLI + Flask dashboard + Docker + Railway config
-- Goal: engine works detached from the CheckWellCall main app
+- Goal achieved: engine runs detached from the CheckWellCall main app
 
-### Phase 2 — Multi-tenant SaaS v0.2
+### Phase 2 — Directory mode + pipeline v0.2 *(complete — May 2026)*
+Everything below is shipped and live:
+- **Directory mode** — Google Places (New) scanner discovers businesses by category × location
+- **5 B2B niche packs** — senior care agencies, home health, ALF, memory care, geriatric care managers
+- **Contact enrichment** — two pluggable enrichers
+  - `website` — six extraction passes (mailto, Cloudflare decode, JSON-LD walker, text-obfuscation, name pairing, residual regex)
+  - `playwright` — headless Chromium for JS-rendered sites
+- **Pipeline / CRM-lite** — unified prospect view across both lead types; stages, notes, tags, follow-up dates, activity log
+- **Manual contact entry** — inline editor per business row + single-business re-enrich
+- **Niche dropdown** — runtime niche swap from the dashboard, persisted in `config.json`
+- **Pre-flight readiness check** — banner surfaces missing env vars + niche config gaps before scanning
+- **Mode-mismatch guards** — UI prevents the "wrong scan for wrong niche" footgun
+- **B2B outreach drafter** — cold-email templates per niche w/ business / city / contact placeholders
+- **Cost transparency** — niche packs annotated with request counts; full-catalog sweep ≈ $18 after free tier
+
+### Phase 3 — Multi-tenant SaaS v0.3 *(planned)*
 - **Postgres + SQLAlchemy** — add `SqlAlchemyRepository` implementing `cwscraper/core/store.py:Repository`
 - **Workspaces + users** — every row scoped by `workspace_id`; users belong to workspaces
 - **Auth** — magic-link email login (Postmark/SES), Google OAuth for sign-up
 - **Stripe billing** — Solo + Agency products, usage caps enforced server-side
-- **OAuth token vault** — Fernet-encrypt at rest, per-workspace KMS key in Phase 3
+- **OAuth token vault** — Fernet-encrypt at rest, per-workspace KMS key in Phase 4
 - **Background workers** — RQ + Redis for scans; Flask process stays responsive
+- **Custom niche pack UI** — create / edit niches from the dashboard, stored per-workspace
 - **Migrate dashboard** to be workspace-scoped (current dashboard assumes single-tenant)
 - Goal: first paying customer onboarded
 
-### Phase 3 — Agency features v0.3
+### Phase 4 — Agency features v0.4 *(planned)*
 - **Public API** with bearer-token auth, per-key rate limits
-- **Webhook outputs** — fire on new high-intent lead, on reply sent, on scan complete
+- **Webhook outputs** — fire on new high-intent lead, on reply sent, on scan complete; HubSpot / GoHighLevel / Pipedrive integrations
+- **Hunter.io enricher** — pluggable third-party enrichment for the businesses website-scraping misses
+- **Retell phone enrichment** — auto-dial businesses to capture decision-maker name + email via voice agent (CheckWellCall's existing Retell infra)
 - **White-label theming** — logo / accent color per workspace, custom subdomain
 - **Seat management** — invite flow, roles (admin / reviewer / read-only)
-- **Niche pack builder UI** — point-and-click keyword/subreddit editor backed by the YAML loader
 - Goal: agency tier ready, first multi-client agency on the platform
 
 ## Risks & how we handle them
