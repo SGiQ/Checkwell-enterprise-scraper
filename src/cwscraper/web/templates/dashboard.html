@@ -565,6 +565,17 @@
         <div id="tab-history" class="tab-content">
             <div class="header"><h2>Scan History</h2></div>
             <div class="panel">
+                <div class="panel-header" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <select id="historyNicheFilter" onchange="_renderScanLogs()" style="padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;min-width:220px">
+                        <option value="">All niches</option>
+                    </select>
+                    <select id="historyKindFilter" onchange="_renderScanLogs()" style="padding:7px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px">
+                        <option value="">All activity</option>
+                        <option value="scan">Discovery scans only</option>
+                        <option value="enrichment">Enrichment runs only</option>
+                    </select>
+                    <span id="historyFilterCount" style="color:#64748b;font-size:12px;margin-left:auto"></span>
+                </div>
                 <div class="panel-body scan-log" id="scanLog"></div>
             </div>
         </div>
@@ -1571,14 +1582,47 @@ ${d.body}</pre>`);
         }
 
         // --- Scan History ---
+        let scanLogsCache = [];
+
         async function loadScanLogs() {
             try {
                 const r = await fetch('/api/scan-logs');
-                const logs = await r.json();
-                const el = document.getElementById('scanLog');
-                el.innerHTML = logs.map(_renderScanLogEntry).join('') ||
-                    '<div style="color:#64748b;text-align:center;padding:30px">No scans yet. Run your first scan.</div>';
+                scanLogsCache = await r.json();
+                _populateHistoryNicheFilter();
+                _renderScanLogs();
             } catch(e) { console.error(e); }
+        }
+
+        function _populateHistoryNicheFilter() {
+            const sel = document.getElementById('historyNicheFilter');
+            const prev = sel.value;
+            const niches = Array.from(new Set(
+                scanLogsCache.map(l => l.niche).filter(Boolean)
+            )).sort();
+            sel.innerHTML = '<option value="">All niches</option>' +
+                niches.map(n => `<option value="${n}">${n}</option>`).join('');
+            // Restore prior selection if still valid
+            if (prev && niches.includes(prev)) sel.value = prev;
+        }
+
+        function _renderScanLogs() {
+            const nicheFilter = document.getElementById('historyNicheFilter').value;
+            const kindFilter  = document.getElementById('historyKindFilter').value;
+            let filtered = scanLogsCache;
+            if (nicheFilter) filtered = filtered.filter(l => l.niche === nicheFilter);
+            if (kindFilter)  filtered = filtered.filter(l => (l.kind || (l.enricher ? 'enrichment' : 'scan')) === kindFilter);
+
+            const el = document.getElementById('scanLog');
+            const count = document.getElementById('historyFilterCount');
+            el.innerHTML = filtered.map(_renderScanLogEntry).join('') ||
+                '<div style="color:#64748b;text-align:center;padding:30px">' +
+                (scanLogsCache.length === 0
+                    ? 'No scans yet. Run your first scan.'
+                    : 'No entries match the current filters.') +
+                '</div>';
+            count.textContent = scanLogsCache.length === filtered.length
+                ? `${filtered.length} entries`
+                : `${filtered.length} of ${scanLogsCache.length} entries`;
         }
 
         // Render one scan log entry, branching on l.kind (scan vs enrichment)
