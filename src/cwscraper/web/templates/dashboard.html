@@ -1581,10 +1581,12 @@ ${d.body}</pre>`);
             } catch(e) { console.error(e); }
         }
 
-        // Render one scan log entry, branching on l.mode (directory vs community).
+        // Render one scan log entry, branching on l.kind (scan vs enrichment)
+        // and l.mode (directory vs community) within scans.
         function _renderScanLogEntry(l) {
             const date = new Date(l.timestamp).toLocaleString();
             const duration = l.duration_seconds ?? 0;
+            const nicheLabel = l.niche ? `<span style="color:#64748b;font-size:11px;margin-left:6px">${l.niche}</span>` : '';
             const errors = (l.errors || []);
             const errorHtml = errors.length
                 ? `<div style="width:100%;margin-top:6px">${errors.slice(0, 12).map(e =>
@@ -1593,7 +1595,39 @@ ${d.body}</pre>`);
                 }</div>`
                 : '';
 
-            // Mode detection: explicit 'mode' (new commits) or infer from field shape.
+            // Kind detection: enrichment runs have an 'enricher' field;
+            // discovery scans have 'sources_scanned' / 'leads_found' / 'businesses_found'.
+            const kind = l.kind || (l.enricher ? 'enrichment' : 'scan');
+
+            if (kind === 'enrichment') {
+                const total = l.businesses_total ?? 0;
+                const done = l.businesses_done ?? 0;
+                const emails = l.emails_found ?? 0;
+                const hitRate = done ? Math.round((emails / done) * 100) : 0;
+                const statusTag = l.status === 'cancelled'
+                    ? `<span style="display:inline-block;background:#dc262633;color:#fca5a5;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">CANCELLED</span>`
+                    : '';
+                const leftBlock = `<div>
+                    <strong>${date}</strong>
+                    <span style="display:inline-block;background:#7c3aed33;color:#c4b5fd;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">Enrichment</span>
+                    <span style="display:inline-block;background:#475569;color:#cbd5e1;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">${l.enricher || '?'}</span>
+                    ${statusTag}
+                    ${nicheLabel}
+                    <br><small style="color:#64748b">${done} / ${total} business${total === 1 ? '' : 'es'} processed${hitRate ? ` · ${hitRate}% hit rate` : ''}</small>
+                </div>`;
+                const rightBlock = `<div style="text-align:right">
+                    <span style="color:#4ade80;font-weight:600;font-size:18px">${emails}</span>
+                    <span style="color:#94a3b8"> email${emails === 1 ? '' : 's'} found</span>
+                    <br><small style="color:#64748b">${duration}s</small>
+                </div>`;
+                return `<div class="scan-entry" style="flex-wrap:wrap">
+                    ${leftBlock}
+                    ${rightBlock}
+                    ${errorHtml}
+                </div>`;
+            }
+
+            // kind === 'scan' (discovery)
             const mode = l.mode || (l.businesses_found !== undefined ? 'directory' : 'community');
             const noWork = duration < 0.1 && !errors.length && !(l.businesses_found || l.leads_found);
 
@@ -1606,6 +1640,7 @@ ${d.body}</pre>`);
                     <strong>${date}</strong>
                     <span style="display:inline-block;background:#a855f733;color:#c4b5fd;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">B2B</span>
                     ${l.status === 'cancelled' ? `<span style="display:inline-block;background:#dc262633;color:#fca5a5;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">CANCELLED</span>` : ''}
+                    ${nicheLabel}
                     <br><small style="color:#64748b">${sources} scanner${sources === 1 ? '' : 's'}, ${queries} Places quer${queries === 1 ? 'y' : 'ies'}</small>
                 </div>`;
                 rightBlock = `<div style="text-align:right">
@@ -1622,6 +1657,7 @@ ${d.body}</pre>`);
                 leftBlock = `<div>
                     <strong>${date}</strong>
                     <span style="display:inline-block;background:#3b82f633;color:#93c5fd;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">Community</span>
+                    ${nicheLabel}
                     <br><small style="color:#64748b">${sources} source${sources === 1 ? '' : 's'}, ${posts} post${posts === 1 ? '' : 's'} checked</small>
                 </div>`;
                 rightBlock = `<div style="text-align:right">

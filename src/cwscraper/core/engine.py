@@ -155,6 +155,9 @@ class ScanEngine:
 
         elapsed = round(time.time() - start, 1)
         result = {
+            "kind": "scan",
+            "mode": "community",
+            "niche": self.niche.slug,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "duration_seconds": elapsed,
             "sources_scanned": len(scanner_slugs),
@@ -286,6 +289,9 @@ class ScanEngine:
         elapsed = round(time.time() - start, 1)
         final_status = "cancelled" if cancelled else "complete"
         result_summary = {
+            "kind": "enrichment",
+            "niche": self.niche.slug,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "enricher": enricher_slug,
             "status": final_status,
             "businesses_total": ctx.businesses_total,
@@ -295,6 +301,9 @@ class ScanEngine:
             "errors": list(ctx.errors)[-20:],
         }
         self.last_enrichment = result_summary
+        # Persist to scan history so the dashboard's Scan History tab shows
+        # enrichment runs alongside discovery scans.
+        self.repo.log_scan(result_summary)
         self.enrichment_progress.update(status=final_status, elapsed_seconds=elapsed)
         return result_summary
 
@@ -351,7 +360,9 @@ class ScanEngine:
 
         elapsed = round(time.time() - start, 1)
         result = {
+            "kind": "scan",
             "mode": "directory",
+            "niche": self.niche.slug,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "duration_seconds": elapsed,
             "sources_scanned": len(scanner_slugs),

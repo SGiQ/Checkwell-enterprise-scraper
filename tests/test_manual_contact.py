@@ -125,3 +125,55 @@ def test_enrich_one_clears_email_first(app_client, tmp_path, monkeypatch):
     body = r.get_json()
     assert r.status_code == 200
     assert body["email"] == "new@acme.example"
+
+
+def test_batch_enrichment_lands_in_scan_history(app_client, tmp_path, monkeypatch):
+    """Completed enrichment runs should appear in /api/scan-logs alongside scans."""
+    from cwscraper.enrichment import website_scraper
+    from cwscraper.enrichment.base import EnrichmentResult
+
+    # Mock the enricher to return predictable data
+    def fake_enrich(self, business, ctx):
+        return EnrichmentResult(email=f"found@{business.get('name', 'x').lower()}.example",
+                                contacts=[], source="website")
+
+    monkeypatch.setattr(website_scraper.WebsiteScraper, "enrich", fake_enrich)
+
+    # Run batch enrichment via the engine (synchronously)
+    from cwscraper.web.app import create_app
+    app = create_app()
+    ctx_obj = app.extensions["cwscraper"]
+    ctx_obj.engine.run_enrichment(enricher_slug="website", only_missing_email=True)
+
+    # Now hit /api/scan-logs and verify the enrichment run is there
+    r = app_client.get("/api/scan-logs")
+    logs = r.get_json()
+    enrichment_logs = [l for l in logs if l.get("kind") == "enrichment"]
+    assert enrichment_logs, "enrichment run did not appear in scan history"
+
+    entry = enrichment_logs[0]
+    assert entry["enricher"] == "website"
+    assert entry["status"] in ("complete", "cancelled")
+    assert "businesses_done" in entry
+    assert "emails_found" in entry
+    assert "niche" in entry
+    assert "timestamp" in entry
+
+
+def test_discovery_scan_log_includes_kind_and_niche(app_client):
+    """Discovery scans must also be tagged so the renderer can discriminate."""
+    # The seed niche is senior_care_agencies_se (directory mode); we don't
+    # actually want to hit Google Places here, but we can verify the tag
+    # logic at the engine level using an empty repo.
+    from cwscraper.web.app import create_app
+    app = create_app()
+    ctx_obj = app.extensions["cwscraper"]
+    # Force a directory scan with no API key -> the run still produces a log
+    # entry with kind=scan + mode=directory + niche=...
+    ctx_obj.engine.run_full_scan()
+    logs = app_client.get("/api/scan-logs").get_json()
+    scan_logs = [l for l in logs if l.get("kind") == "scan"]
+    assert scan_logs, "discovery scan did not appear in history"
+    entry = scan_logs[0]
+    assert entry["mode"] == "directory"
+    assert entry["niche"] == "senior_care_agencies_se"
