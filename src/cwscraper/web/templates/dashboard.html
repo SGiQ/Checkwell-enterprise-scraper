@@ -1576,21 +1576,73 @@ ${d.body}</pre>`);
                 const r = await fetch('/api/scan-logs');
                 const logs = await r.json();
                 const el = document.getElementById('scanLog');
-                el.innerHTML = logs.map(l => {
-                    const date = new Date(l.timestamp).toLocaleString();
-                    const errors = (l.errors || []);
-                    const errorHtml = errors.length ? `<div style="margin-top:6px">${errors.map(e => `<div style="font-size:11px;color:#f87171">&#9888; ${e}</div>`).join('')}</div>` : '';
-                    return `<div class="scan-entry" style="flex-wrap:wrap">
-                        <div><strong>${date}</strong><br><small style="color:#64748b">${l.subreddits_scanned} sources, ${l.posts_checked} posts checked</small></div>
-                        <div style="text-align:right">
-                            <span style="color:#f87171;font-weight:600">${l.high_intent}</span> high /
-                            <span style="color:#fbbf24;font-weight:600">${l.medium_intent}</span> medium
-                            <br><small style="color:#64748b">${l.duration_seconds}s</small>
-                        </div>
-                        ${errorHtml ? `<div style="width:100%">${errorHtml}</div>` : ''}
-                    </div>`;
-                }).join('') || '<div style="color:#64748b;text-align:center;padding:30px">No scans yet. Run your first scan.</div>';
+                el.innerHTML = logs.map(_renderScanLogEntry).join('') ||
+                    '<div style="color:#64748b;text-align:center;padding:30px">No scans yet. Run your first scan.</div>';
             } catch(e) { console.error(e); }
+        }
+
+        // Render one scan log entry, branching on l.mode (directory vs community).
+        function _renderScanLogEntry(l) {
+            const date = new Date(l.timestamp).toLocaleString();
+            const duration = l.duration_seconds ?? 0;
+            const errors = (l.errors || []);
+            const errorHtml = errors.length
+                ? `<div style="width:100%;margin-top:6px">${errors.slice(0, 12).map(e =>
+                    `<div style="font-size:11px;color:#f87171">&#9888; ${e}</div>`).join('')}${
+                    errors.length > 12 ? `<div style="font-size:11px;color:#64748b">…and ${errors.length - 12} more</div>` : ''
+                }</div>`
+                : '';
+
+            // Mode detection: explicit 'mode' (new commits) or infer from field shape.
+            const mode = l.mode || (l.businesses_found !== undefined ? 'directory' : 'community');
+            const noWork = duration < 0.1 && !errors.length && !(l.businesses_found || l.leads_found);
+
+            let leftBlock, rightBlock;
+            if (mode === 'directory') {
+                const businesses = l.businesses_found ?? 0;
+                const queries = l.queries_run ?? 0;
+                const sources = l.sources_scanned ?? 0;
+                leftBlock = `<div>
+                    <strong>${date}</strong>
+                    <span style="display:inline-block;background:#a855f733;color:#c4b5fd;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">B2B</span>
+                    ${l.status === 'cancelled' ? `<span style="display:inline-block;background:#dc262633;color:#fca5a5;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">CANCELLED</span>` : ''}
+                    <br><small style="color:#64748b">${sources} scanner${sources === 1 ? '' : 's'}, ${queries} Places quer${queries === 1 ? 'y' : 'ies'}</small>
+                </div>`;
+                rightBlock = `<div style="text-align:right">
+                    <span style="color:#a855f7;font-weight:600;font-size:18px">${businesses}</span>
+                    <span style="color:#94a3b8"> business${businesses === 1 ? '' : 'es'} found</span>
+                    <br><small style="color:#64748b">${duration}s</small>
+                </div>`;
+            } else {
+                // community-mode (also covers legacy logs)
+                const high = l.high_intent ?? 0;
+                const medium = l.medium_intent ?? 0;
+                const sources = l.sources_scanned ?? l.subreddits_scanned ?? 0;
+                const posts = l.posts_checked ?? 0;
+                leftBlock = `<div>
+                    <strong>${date}</strong>
+                    <span style="display:inline-block;background:#3b82f633;color:#93c5fd;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px">Community</span>
+                    <br><small style="color:#64748b">${sources} source${sources === 1 ? '' : 's'}, ${posts} post${posts === 1 ? '' : 's'} checked</small>
+                </div>`;
+                rightBlock = `<div style="text-align:right">
+                    <span style="color:#f87171;font-weight:600">${high}</span> high /
+                    <span style="color:#fbbf24;font-weight:600">${medium}</span> medium
+                    <br><small style="color:#64748b">${duration}s</small>
+                </div>`;
+            }
+
+            if (noWork) {
+                rightBlock = `<div style="text-align:right;color:#64748b;font-size:12px">
+                    no work to do
+                    <br><small>${duration}s</small>
+                </div>`;
+            }
+
+            return `<div class="scan-entry" style="flex-wrap:wrap">
+                ${leftBlock}
+                ${rightBlock}
+                ${errorHtml}
+            </div>`;
         }
 
         // --- Settings ---
