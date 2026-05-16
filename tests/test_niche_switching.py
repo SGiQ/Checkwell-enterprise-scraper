@@ -46,6 +46,8 @@ def test_all_bundled_directory_packs_load_cleanly():
         "mental_health_practices_se",
         "drug_rehab_centers_se",
         "outpatient_clinics_se",
+        "pace_programs_se",
+        "area_agencies_on_aging_se",
     ]
     available = {n["slug"] for n in list_bundled_niches()}
     for slug in expected_directory_packs:

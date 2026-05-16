@@ -82,6 +82,8 @@ A niche pack is a single YAML file under `src/cwscraper/niches/` that defines ei
 | `mental_health_practices_se` | Directory | Therapy / counseling practices (caregiver-burnout + elderly-patient angles) |
 | `drug_rehab_centers_se` | Directory | Addiction treatment + recovery centers (post-discharge support) |
 | `outpatient_clinics_se` | Directory | Outpatient + ambulatory surgery centers (post-procedure follow-up) |
+| `pace_programs_se` | Directory | PACE (Programs of All-Inclusive Care for the Elderly) — referral source for non-qualifying families |
+| `area_agencies_on_aging_se` | Directory | Federally-mandated regional aging-services coordinators — top inbound referral channel |
 
 ### Building your own
 
