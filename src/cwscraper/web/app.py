@@ -20,6 +20,9 @@ from cwscraper.core.niche import list_bundled_niches, load_niche
 from cwscraper.core.preflight import evaluate as evaluate_preflight
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
+from cwscraper.email.dispatcher import EmailDispatcher
+from cwscraper.email.queue import ScheduledEmailQueue
+from cwscraper.email.transport import get_transport
 from cwscraper.replies import RedditOAuth, draft_outreach, draft_reply, post_reddit_comment
 
 logging.basicConfig(
@@ -43,6 +46,9 @@ class AppContext:
         self.niche = None
         self.engine = None
         self.scheduler: AutoScanner | None = None
+        # Email scheduling — queue + background dispatcher
+        self.email_queue = ScheduledEmailQueue(self.repo.dir)
+        self.email_dispatcher = EmailDispatcher(self.email_queue, self.repo)
         self._lock = threading.Lock()
 
     def boot(self) -> None:
@@ -54,6 +60,9 @@ class AppContext:
         except FileNotFoundError:
             logger.warning("Niche '%s' not found, falling back to caregiver", slug)
             self.swap_niche("caregiver")
+        # Background email dispatcher — safe to always start; tick() no-ops
+        # when the queue is empty or the transport isn't configured.
+        self.email_dispatcher.start()
 
     def swap_niche(self, slug: str) -> dict:
         """Switch to a different niche pack. Persists the choice."""
@@ -879,6 +888,117 @@ def create_app() -> Flask:
             return jsonify({"error": "No enrichment in progress"}), 409
         ctx.engine.cancel_enrichment()
         return jsonify({"ok": True, "status": "cancelling"})
+
+    # ----------------------- email scheduling ------------------------------
+
+    @app.route("/api/emails/transport")
+    def api_email_transport_status():
+        """Tell the dashboard whether scheduling is wired up."""
+        t = get_transport()
+        return jsonify({
+            "configured": t is not None,
+            "transport": t.name if t else None,
+            "from_email": os.getenv("CWSCRAPER_FROM_EMAIL", ""),
+            "from_name": os.getenv("CWSCRAPER_FROM_NAME", ""),
+        })
+
+    @app.route("/api/emails/scheduled")
+    def api_emails_list():
+        status = request.args.get("status")
+        prospect_id = request.args.get("prospect_id")
+        return jsonify({
+            "emails": ctx.email_queue.list(status=status, prospect_id=prospect_id),
+        })
+
+    @app.route("/api/emails/schedule", methods=["POST"])
+    def api_emails_schedule():
+        """Enqueue one email for later send.
+
+        Body: {
+          prospect_id, lead_type ('business'|'community'),
+          to_email, subject, body,
+          scheduled_for ('now' or ISO YYYY-MM-DDTHH:MM:SS),
+          from_email?, from_name?, reply_to?
+        }
+        """
+        data = request.get_json() or {}
+
+        required = ("prospect_id", "to_email", "subject", "body")
+        missing = [k for k in required if not data.get(k)]
+        if missing:
+            return jsonify({"error": f"Missing required fields: {missing}"}), 400
+
+        # Validate the destination email
+        import re as _re
+        to_email = data["to_email"].strip().lower()
+        if not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", to_email):
+            return jsonify({"error": f"Invalid to_email: {to_email!r}"}), 400
+
+        # Normalize scheduled_for: 'now' means right now (will fire on next tick)
+        scheduled_for_raw = (data.get("scheduled_for") or "now").strip().lower()
+        if scheduled_for_raw in ("now", ""):
+            scheduled_for = datetime.now(timezone.utc).isoformat()
+        else:
+            try:
+                # Accept either ISO datetime or YYYY-MM-DDTHH:MM (local-time-ish);
+                # treat naive datetimes as UTC for predictability.
+                parsed = datetime.fromisoformat(scheduled_for_raw.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                scheduled_for = parsed.isoformat()
+            except ValueError:
+                return jsonify({
+                    "error": f"Invalid scheduled_for: {scheduled_for_raw!r}. "
+                             "Use 'now' or an ISO datetime like 2026-05-20T14:00:00."
+                }), 400
+
+        lead_type = data.get("lead_type") or "business"
+        if lead_type not in ("business", "community"):
+            return jsonify({"error": "lead_type must be 'business' or 'community'"}), 400
+
+        entry = ctx.email_queue.enqueue(
+            prospect_id=data["prospect_id"],
+            lead_type=lead_type,
+            to_email=to_email,
+            subject=data["subject"],
+            body=data["body"],
+            scheduled_for=scheduled_for,
+            from_email=(data.get("from_email") or "").strip(),
+            from_name=(data.get("from_name") or "").strip(),
+            reply_to=(data.get("reply_to") or "").strip(),
+        )
+        return jsonify({"ok": True, "email": entry})
+
+    @app.route("/api/emails/<email_id>/cancel", methods=["POST"])
+    def api_emails_cancel(email_id):
+        result = ctx.email_queue.cancel(email_id)
+        if not result:
+            return jsonify({
+                "error": "Email not found or not pending (only pending emails can be cancelled)"
+            }), 404
+        return jsonify({"ok": True, "email": result})
+
+    @app.route("/api/emails/<email_id>/send-now", methods=["POST"])
+    def api_emails_send_now(email_id):
+        """Move a pending email's scheduled_for to now, so the next tick sends it.
+
+        Useful for 'I want to send this RIGHT NOW' instead of waiting for the
+        scheduled time. Returns 404 if already sent/cancelled/failed.
+        """
+        entry = ctx.email_queue.get(email_id)
+        if not entry or entry.get("status") != "pending":
+            return jsonify({"error": "Email not found or not pending"}), 404
+        # Patch scheduled_for to now and let the dispatcher pick it up.
+        # We piggyback on _patch by calling enqueue+cancel? Cleaner: a dedicated
+        # method on the queue. Quick path: dispatcher.tick() right now.
+        ctx.email_queue._patch(email_id, {
+            "scheduled_for": datetime.now(timezone.utc).isoformat()
+        })
+        # Trigger an immediate tick in the dispatcher's thread (best-effort)
+        threading.Thread(
+            target=ctx.email_dispatcher.tick, daemon=True
+        ).start()
+        return jsonify({"ok": True})
 
     # ----------------------- outreach (cold email drafts) ------------------
     @app.route("/api/outreach/draft", methods=["POST"])

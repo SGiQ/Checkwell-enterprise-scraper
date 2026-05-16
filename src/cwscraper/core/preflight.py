@@ -63,7 +63,42 @@ def evaluate(niche: NichePack) -> PreflightCheck:
         "REDDIT_CLIENT_SECRET":  _env_present("REDDIT_CLIENT_SECRET"),
         "CWSCRAPER_SECRET":      _env_present("CWSCRAPER_SECRET"),
         "CWSCRAPER_DATA_DIR":    _env_present("CWSCRAPER_DATA_DIR"),
+        "RESEND_API_KEY":        _env_present("RESEND_API_KEY"),
+        "CWSCRAPER_FROM_EMAIL":  _env_present("CWSCRAPER_FROM_EMAIL"),
+        "CWSCRAPER_FROM_NAME":   _env_present("CWSCRAPER_FROM_NAME"),
     }
+
+    # Email scheduling is optional; only warn if half-configured
+    has_resend = pf.env_status["RESEND_API_KEY"]
+    has_from   = pf.env_status["CWSCRAPER_FROM_EMAIL"]
+    if has_resend and not has_from:
+        pf.warnings.append({
+            "code": "email_partial_config",
+            "title": "Email scheduler partially configured",
+            "detail": (
+                "RESEND_API_KEY is set but CWSCRAPER_FROM_EMAIL is not. "
+                "Scheduled emails will fail at send time. Set the sender address."
+            ),
+        })
+    elif has_from and not has_resend:
+        pf.warnings.append({
+            "code": "email_partial_config",
+            "title": "Email scheduler partially configured",
+            "detail": (
+                "CWSCRAPER_FROM_EMAIL is set but RESEND_API_KEY is not. "
+                "Sign up at resend.com (3k/mo free) and add the API key."
+            ),
+        })
+    elif not has_resend and not has_from:
+        pf.notes.append({
+            "code": "email_scheduler_not_configured",
+            "title": "Email scheduler not configured",
+            "detail": (
+                "Add RESEND_API_KEY + CWSCRAPER_FROM_EMAIL to enable scheduled "
+                "email sends from the dashboard. Currently 'Draft Email' opens "
+                "your default mail client only."
+            ),
+        })
 
     if niche.mode == "directory":
         _evaluate_directory(niche, pf)
