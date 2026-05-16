@@ -111,10 +111,26 @@ class PlaywrightScraper(WebsiteScraper):
 
         time.sleep(PER_PAGE_DELAY)
         try:
-            self._page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+            response = self._page.goto(
+                url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS,
+            )
         except Exception as e:
-            ctx.log_error(business.get("name", url), f"playwright goto failed: {type(e).__name__}")
+            ctx.log_error(
+                business.get("name", url),
+                f"playwright goto failed [{url}]: {_brief_error(e)}",
+            )
             return None
+
+        # If the server returned a hard error status, log it so we can tell
+        # cloudflare blocks (403/503) from timeouts in the dashboard errors panel.
+        if response is not None and response.status >= 400:
+            ctx.log_error(
+                business.get("name", url),
+                f"playwright HTTP {response.status} [{url}]",
+            )
+            # 4xx still gives us HTML sometimes (custom error pages with contact info);
+            # 5xx and bot-block pages usually don't. Try to read content anyway —
+            # the extraction passes will yield nothing if there's nothing to parse.
 
         # Best-effort wait for JS-driven content to finish loading.
         try:
@@ -127,11 +143,29 @@ class PlaywrightScraper(WebsiteScraper):
         try:
             html = self._page.content()
         except Exception as e:
-            ctx.log_error(business.get("name", url), f"playwright content() failed: {type(e).__name__}")
+            ctx.log_error(
+                business.get("name", url),
+                f"playwright content() failed [{url}]: {_brief_error(e)}",
+            )
             return None
 
         # Same memory cap as the requests-based version
         return html[:500_000]
+
+
+def _brief_error(exc: Exception) -> str:
+    """Compact one-line summary of a Playwright exception.
+
+    Playwright raises a single generic Error class for everything, so
+    type(exc).__name__ is uninformative. Strip the message of stack-trace
+    noise (Playwright errors are multi-line with call-log dumps) and take
+    just the first line so dashboard error toasts stay readable.
+    """
+    msg = (str(exc) or repr(exc)).strip()
+    first_line = msg.split("\n", 1)[0].strip()
+    # Playwright timeouts read "Page.goto: Timeout 20000ms exceeded." — keep that
+    # but cap length so 800-line stack traces don't overwhelm the UI.
+    return first_line[:160] or type(exc).__name__
 
 
 def discover_pages_via_browser(html: str, base_url: str) -> list[str]:

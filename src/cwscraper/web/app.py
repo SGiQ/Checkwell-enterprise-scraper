@@ -838,6 +838,18 @@ def create_app() -> Flask:
             "last_enrichment": ctx.engine.last_enrichment,
         })
 
+    @app.route("/api/enrich/stop", methods=["POST"])
+    def api_enrich_stop():
+        """Signal the running enrichment loop to stop after the current item.
+
+        In-flight Playwright pages finish their current goto/render and then
+        exit — typical real-world latency is 1-10 seconds before idle.
+        """
+        if not ctx.engine.is_enriching:
+            return jsonify({"error": "No enrichment in progress"}), 409
+        ctx.engine.cancel_enrichment()
+        return jsonify({"ok": True, "status": "cancelling"})
+
     # ----------------------- outreach (cold email drafts) ------------------
     @app.route("/api/outreach/draft", methods=["POST"])
     def api_outreach_draft():

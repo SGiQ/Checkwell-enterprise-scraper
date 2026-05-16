@@ -40,6 +40,7 @@ class ScanEngine:
         self.niche = niche
         self._lock = threading.Lock()
         self._enrich_lock = threading.Lock()
+        self._enrich_cancel = threading.Event()   # set => current run should bail out
         self.is_scanning = False
         self.is_enriching = False
         self.last_scan: dict | None = None
@@ -62,6 +63,18 @@ class ScanEngine:
             "elapsed_seconds": 0,
             "errors": [],
         }
+
+    def cancel_enrichment(self) -> bool:
+        """Signal the running enrichment loop to stop after the current item.
+
+        Returns True if a run was in progress (cancellation requested),
+        False if nothing was running.
+        """
+        if not self.is_enriching:
+            return False
+        self._enrich_cancel.set()
+        self.enrichment_progress["status"] = "cancelling"
+        return True
 
     def run_full_scan(self) -> dict:
         if self.is_scanning:
@@ -176,13 +189,16 @@ class ScanEngine:
             if self.is_enriching:
                 return {"error": "Enrichment already in progress"}
             self.is_enriching = True
+            self._enrich_cancel.clear()
 
         start = time.time()
         try:
             return self._do_enrichment(enricher_slug, only_missing_email, limit, start)
         finally:
             self.is_enriching = False
-            self.enrichment_progress["status"] = "idle"
+            # Preserve the 'cancelled' status if the loop bailed out — otherwise idle
+            if self.enrichment_progress.get("status") != "cancelled":
+                self.enrichment_progress["status"] = "idle"
 
     def _do_enrichment(
         self,
@@ -225,14 +241,18 @@ class ScanEngine:
             }
 
         progress_lock = threading.Lock()
+        cancelled = False
 
-        def _do_one(biz: dict) -> tuple[str, object]:
+        def _do_one(biz: dict) -> tuple[str, object, bool]:
+            # Honor cancel signal — drop the work without running the enricher.
+            if self._enrich_cancel.is_set():
+                return biz.get("id", ""), None, True
             try:
                 result = enricher.enrich(biz, ctx)
             except Exception as e:
                 ctx.log_error(biz.get("name", biz.get("id", "?")), f"unhandled: {e}")
                 result = None
-            return biz.get("id", ""), result
+            return biz.get("id", ""), result, False
 
         # Heavy enrichers (Playwright) request lower concurrency to keep memory in check.
         suggested = getattr(enricher, "suggested_workers", None)
@@ -240,7 +260,9 @@ class ScanEngine:
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = [pool.submit(_do_one, biz) for biz in candidates]
             for fut in as_completed(futures):
-                biz_id, result = fut.result()
+                biz_id, result, skipped = fut.result()
+                if skipped:
+                    cancelled = True
                 if result and (result.email or result.contacts):
                     patch = {}
                     if result.email:
@@ -250,9 +272,10 @@ class ScanEngine:
                     if patch:
                         self.repo.update_business(biz_id, patch)
                 with progress_lock:
-                    ctx.businesses_done += 1
-                    if result and result.email:
-                        ctx.emails_found += 1
+                    if not skipped:
+                        ctx.businesses_done += 1
+                        if result and result.email:
+                            ctx.emails_found += 1
                     self.enrichment_progress.update(
                         businesses_done=ctx.businesses_done,
                         emails_found=ctx.emails_found,
@@ -261,8 +284,10 @@ class ScanEngine:
                     )
 
         elapsed = round(time.time() - start, 1)
+        final_status = "cancelled" if cancelled else "complete"
         result_summary = {
             "enricher": enricher_slug,
+            "status": final_status,
             "businesses_total": ctx.businesses_total,
             "businesses_done": ctx.businesses_done,
             "emails_found": ctx.emails_found,
@@ -270,7 +295,7 @@ class ScanEngine:
             "errors": list(ctx.errors)[-20:],
         }
         self.last_enrichment = result_summary
-        self.enrichment_progress.update(status="complete", elapsed_seconds=elapsed)
+        self.enrichment_progress.update(status=final_status, elapsed_seconds=elapsed)
         return result_summary
 
     # ----------------------- directory mode -----------------------------

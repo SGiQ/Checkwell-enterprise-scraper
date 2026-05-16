@@ -444,9 +444,12 @@
                 <button onclick="switchToFirstDirectoryNiche()" style="margin-left:12px;background:#a855f7;color:#fff;border:0;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Switch to B2B niche now</button>
             </div>
             <div class="scan-progress" id="enrichProgress" style="display:none;background:#2e1065;border-color:#7c3aed">
-                <div class="progress-header">
+                <div class="progress-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
                     <span class="status-text" id="enrichStatus">Enriching contacts...</span>
-                    <span class="elapsed" id="enrichElapsed">0s</span>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="elapsed" id="enrichElapsed">0s</span>
+                        <button id="enrichStopBtn" onclick="stopEnrichment()" style="background:#dc2626;color:#fff;border:0;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Stop</button>
+                    </div>
                 </div>
                 <div class="progress-bar-track">
                     <div class="progress-bar-fill" id="enrichBar" style="width:0%;background:#a855f7"></div>
@@ -1004,6 +1007,21 @@
             }
         }
 
+        async function stopEnrichment() {
+            const btn = document.getElementById('enrichStopBtn');
+            btn.disabled = true;
+            btn.textContent = 'Stopping...';
+            try {
+                const r = await fetch('/api/enrich/stop', {method: 'POST'});
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); btn.disabled = false; btn.textContent = 'Stop'; return; }
+                showToast('Stop signal sent — finishing current item then exiting');
+            } catch (e) {
+                showToast('Stop failed: ' + e.message, true);
+                btn.disabled = false; btn.textContent = 'Stop';
+            }
+        }
+
         async function pollEnrichment() {
             try {
                 const r = await fetch('/api/enrich/status');
@@ -1014,7 +1032,9 @@
                 const pct   = total ? Math.round((done / total) * 100) : 0;
 
                 document.getElementById('enrichStatus').textContent =
-                    p.status === 'complete' ? `Done — ${p.emails_found || 0} emails found` :
+                    p.status === 'complete'   ? `Done — ${p.emails_found || 0} emails found` :
+                    p.status === 'cancelled'  ? `Cancelled — ${p.emails_found || 0} emails found (${done} processed)` :
+                    p.status === 'cancelling' ? `Stopping... (${done} done so far)` :
                     `Enriching contacts... (${pct}%)`;
                 document.getElementById('enrichElapsed').textContent  = `${p.elapsed_seconds || 0}s`;
                 document.getElementById('enrichBar').style.width      = `${pct}%`;
@@ -1035,6 +1055,9 @@
                     const btn = document.getElementById('enrichBtn');
                     btn.disabled = false;
                     btn.textContent = 'Enrich Contacts';
+                    // Reset the Stop button so the next run starts clean
+                    const stopBtn = document.getElementById('enrichStopBtn');
+                    if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = 'Stop'; }
                     loadBusinesses();  // refresh table to show new emails
                     setTimeout(() => {
                         document.getElementById('enrichProgress').style.display = 'none';
