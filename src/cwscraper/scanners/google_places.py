@@ -160,6 +160,7 @@ def _parse_place(raw: dict, discovered_via: str, niche) -> BusinessLead | None:
         latitude=float(location.get("latitude", 0) or 0),
         longitude=float(location.get("longitude", 0) or 0),
         discovered_via=discovered_via,
+        source_niches=[niche.slug] if niche.slug else [],
     )
 
 

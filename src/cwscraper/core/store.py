@@ -156,11 +156,20 @@ class JSONRepository:
                 row = asdict(biz)
                 if row["id"] in by_id:
                     # Merge: keep status / contacts / email from existing,
-                    # refresh everything else from latest scan.
+                    # refresh discovery fields from latest scan, and *union*
+                    # source_niches so a business found by multiple niches
+                    # carries all of its discovery tags.
                     prior = by_id[row["id"]]
                     row["status"] = prior.get("status", "new")
                     row["email"] = row["email"] or prior.get("email", "")
                     row["contacts"] = row["contacts"] or prior.get("contacts", [])
+                    prior_niches = prior.get("source_niches") or []
+                    new_niches = row.get("source_niches") or []
+                    merged = list(prior_niches)
+                    for n in new_niches:
+                        if n and n not in merged:
+                            merged.append(n)
+                    row["source_niches"] = merged
                 by_id[row["id"]] = row
             self.businesses_file.write_text(
                 json.dumps(list(by_id.values()), indent=2), encoding="utf-8"

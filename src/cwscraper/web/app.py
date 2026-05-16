@@ -455,7 +455,9 @@ def create_app() -> Flask:
         status = request.args.get("status")
         state = request.args.get("state")
         city = request.args.get("city")
+        niche = request.args.get("niche")
         has_website = request.args.get("has_website")
+        has_email = request.args.get("has_email")
         min_rating = request.args.get("min_rating", type=float)
         search = request.args.get("search", "").lower()
 
@@ -465,8 +467,12 @@ def create_app() -> Flask:
             businesses = [b for b in businesses if b.get("state") == state]
         if city:
             businesses = [b for b in businesses if b.get("city", "").lower() == city.lower()]
+        if niche:
+            businesses = [b for b in businesses if niche in (b.get("source_niches") or [])]
         if has_website in ("true", "1"):
             businesses = [b for b in businesses if b.get("website")]
+        if has_email in ("true", "1"):
+            businesses = [b for b in businesses if b.get("email")]
         if min_rating is not None:
             businesses = [b for b in businesses if (b.get("rating") or 0) >= min_rating]
         if search:
@@ -598,6 +604,30 @@ def create_app() -> Flask:
             "contacts": [],
             "message": "Enricher ran but found no contacts",
             "errors": enrich_ctx.errors,
+        })
+
+    @app.route("/api/businesses/niches")
+    def api_business_niches():
+        """Distinct source_niches across the current business dataset, with counts.
+
+        Powers the niche filter dropdown on the Businesses tab — only shows
+        niches the user actually has data for.
+        """
+        counts: dict[str, int] = {}
+        untagged = 0
+        for b in repo.get_businesses():
+            niches = b.get("source_niches") or []
+            if not niches:
+                untagged += 1
+                continue
+            for n in niches:
+                counts[n] = counts.get(n, 0) + 1
+        return jsonify({
+            "niches": [
+                {"slug": slug, "count": counts[slug]}
+                for slug in sorted(counts, key=lambda s: (-counts[s], s))
+            ],
+            "untagged": untagged,
         })
 
     @app.route("/api/businesses/stats")

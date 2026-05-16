@@ -100,6 +100,7 @@ class BusinessLead:
 
     # --- discovery metadata ---
     discovered_via: str = ""              # search query that surfaced this business
+    source_niches: list[str] = field(default_factory=list)  # niche slugs that found this row
     discovered_at: str = field(default_factory=_utcnow)
     status: str = "new"                   # legacy: new, qualified, contacted, dismissed
 

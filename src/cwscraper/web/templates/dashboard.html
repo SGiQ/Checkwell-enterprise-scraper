@@ -471,6 +471,9 @@
             <div class="panel">
                 <div class="panel-header" style="display:flex;gap:8px;flex-wrap:wrap">
                     <input type="text" id="bizSearch" placeholder="Search name / address / city..." style="flex:1;min-width:240px;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                    <select id="bizNiche" style="padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;min-width:200px">
+                        <option value="">All niches</option>
+                    </select>
                     <select id="bizState" style="padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
                         <option value="">All States</option>
                         <option value="FL">FL</option><option value="GA">GA</option>
@@ -483,6 +486,10 @@
                         <option value="qualified">Qualified</option>
                         <option value="contacted">Contacted</option>
                         <option value="dismissed">Dismissed</option>
+                    </select>
+                    <select id="bizEmail" style="padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                        <option value="">Email: any</option>
+                        <option value="true">Has email</option>
                     </select>
                     <button class="scan-btn" onclick="loadBusinesses()" style="background:#0ea5e9">Filter</button>
                 </div>
@@ -807,10 +814,15 @@
                      title="Edit email" style="background:transparent;border:0;color:#64748b;cursor:pointer;font-size:11px;padding:0 4px">✏</button>`
                 : `<button onclick="event.stopPropagation(); openContactEditor('${b.id}', '')"
                      style="background:transparent;border:1px dashed #475569;color:#94a3b8;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:3px">+ add email</button>`;
+            const niches = b.source_niches || [];
+            const nicheChips = niches.slice(0, 2).map(n =>
+                `<span style="background:#0f172a;border:1px solid #334155;color:#94a3b8;padding:1px 5px;border-radius:3px;font-size:9px;margin-right:3px">${n}</span>`
+            ).join('') + (niches.length > 2 ? `<span style="color:#64748b;font-size:9px">+${niches.length - 2}</span>` : '');
             return `<tr id="bizrow-${b.id}">
                 <td>
                     <div style="font-weight:600">${b.name || '(unnamed)'}</div>
                     <small style="color:#64748b">${b.category || ''}</small>
+                    ${nicheChips ? `<div style="margin-top:3px">${nicheChips}</div>` : ''}
                 </td>
                 <td>
                     <div>${b.city || ''}, ${b.state || ''} ${b.zip_code || ''}</div>
@@ -943,13 +955,18 @@
         }
 
         async function loadBusinesses() {
+            await _populateBizNicheFilter();   // refresh dropdown options
             const search = document.getElementById('bizSearch').value;
             const state  = document.getElementById('bizState').value;
             const status = document.getElementById('bizStatus').value;
+            const niche  = document.getElementById('bizNiche').value;
+            const hasEmail = document.getElementById('bizEmail').value;
             const params = new URLSearchParams();
-            if (search) params.set('search', search);
-            if (state)  params.set('state', state);
-            if (status) params.set('status', status);
+            if (search)   params.set('search', search);
+            if (state)    params.set('state', state);
+            if (status)   params.set('status', status);
+            if (niche)    params.set('niche', niche);
+            if (hasEmail) params.set('has_email', hasEmail);
             params.set('per_page', 100);
 
             try {
@@ -977,6 +994,24 @@
                     tbody.innerHTML = list.businesses.map(renderBusinessRow).join('');
                 }
             } catch (e) { console.error(e); }
+        }
+
+        async function _populateBizNicheFilter() {
+            try {
+                const r = await fetch('/api/businesses/niches');
+                const d = await r.json();
+                const sel = document.getElementById('bizNiche');
+                const prev = sel.value;
+                let opts = '<option value="">All niches</option>';
+                for (const n of (d.niches || [])) {
+                    opts += `<option value="${n.slug}">${n.slug} (${n.count})</option>`;
+                }
+                if ((d.untagged || 0) > 0) {
+                    opts += `<option value="" disabled style="color:#64748b">+ ${d.untagged} untagged (run a scan to tag)</option>`;
+                }
+                sel.innerHTML = opts;
+                if (prev) sel.value = prev;   // preserve user's selection
+            } catch (e) { console.error('niche filter populate failed', e); }
         }
 
         async function updateBizStatus(id, status) {

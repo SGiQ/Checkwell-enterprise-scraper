@@ -160,6 +160,57 @@ def test_batch_enrichment_lands_in_scan_history(app_client, tmp_path, monkeypatc
     assert "timestamp" in entry
 
 
+def test_businesses_filter_by_niche(app_client, tmp_path):
+    """The /api/businesses?niche=... filter should respect source_niches tags."""
+    repo = JSONRepository(data_dir=tmp_path)
+    repo.add_businesses([
+        BusinessLead(id="b1", name="Senior Care Co",   source_niches=["senior_care_agencies_se"]),
+        BusinessLead(id="b2", name="PACE Center",      source_niches=["pace_programs_se"]),
+        BusinessLead(id="b3", name="Multi-niche Co",
+                     source_niches=["senior_care_agencies_se", "pace_programs_se"]),
+    ])
+
+    # All niches
+    all_rows = app_client.get("/api/businesses").get_json()["businesses"]
+    assert {b["id"] for b in all_rows} == {"b1", "b2", "b3", "biz1"}  # biz1 is the fixture seed
+
+    # Filter to PACE only — should return b2 + b3 (multi-niche row matches)
+    pace = app_client.get("/api/businesses?niche=pace_programs_se").get_json()["businesses"]
+    assert {b["id"] for b in pace} == {"b2", "b3"}
+
+    # Filter to senior_care_agencies_se — should return b1 + b3
+    sca = app_client.get("/api/businesses?niche=senior_care_agencies_se").get_json()["businesses"]
+    assert {b["id"] for b in sca} == {"b1", "b3"}
+
+
+def test_businesses_niches_endpoint_counts(app_client, tmp_path):
+    repo = JSONRepository(data_dir=tmp_path)
+    repo.add_businesses([
+        BusinessLead(id="b1", name="A", source_niches=["pace_programs_se"]),
+        BusinessLead(id="b2", name="B", source_niches=["pace_programs_se"]),
+        BusinessLead(id="b3", name="C", source_niches=["senior_care_agencies_se"]),
+        BusinessLead(id="b4", name="Untagged"),    # no source_niches
+    ])
+    d = app_client.get("/api/businesses/niches").get_json()
+    by_slug = {n["slug"]: n["count"] for n in d["niches"]}
+    assert by_slug["pace_programs_se"] == 2
+    assert by_slug["senior_care_agencies_se"] == 1
+    # 'biz1' from fixture is also untagged so untagged count is >= 1
+    assert d["untagged"] >= 1
+
+
+def test_businesses_filter_has_email(app_client, tmp_path):
+    repo = JSONRepository(data_dir=tmp_path)
+    repo.add_businesses([
+        BusinessLead(id="b1", name="With Email",    email="ok@x.example"),
+        BusinessLead(id="b2", name="Without Email", email=""),
+    ])
+    with_email = app_client.get("/api/businesses?has_email=true").get_json()["businesses"]
+    ids = {b["id"] for b in with_email}
+    assert "b1" in ids
+    assert "b2" not in ids
+
+
 def test_discovery_scan_log_includes_kind_and_niche(app_client):
     """Discovery scans must also be tagged so the renderer can discriminate."""
     # The seed niche is senior_care_agencies_se (directory mode); we don't

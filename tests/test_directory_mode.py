@@ -55,6 +55,31 @@ def test_business_status_updates(tmp_repo):
     assert tmp_repo.get_businesses()[0]["status"] == "qualified"
 
 
+def test_source_niches_set_on_first_discovery(tmp_repo):
+    tmp_repo.add_businesses([BusinessLead(id="b", name="X", source_niches=["pace_programs_se"])])
+    row = tmp_repo.get_businesses()[0]
+    assert row["source_niches"] == ["pace_programs_se"]
+
+
+def test_source_niches_union_on_rediscovery(tmp_repo):
+    """A business found by two niches should carry both tags."""
+    tmp_repo.add_businesses([BusinessLead(id="b", name="X",
+                                          source_niches=["senior_care_agencies_se"])])
+    # Same place_id, different niche
+    tmp_repo.add_businesses([BusinessLead(id="b", name="X",
+                                          source_niches=["pace_programs_se"])])
+    row = tmp_repo.get_businesses()[0]
+    assert set(row["source_niches"]) == {"senior_care_agencies_se", "pace_programs_se"}
+
+
+def test_source_niches_deduplicates(tmp_repo):
+    """Re-scanning the same niche shouldn't duplicate the tag."""
+    tmp_repo.add_businesses([BusinessLead(id="b", name="X", source_niches=["pace_programs_se"])])
+    tmp_repo.add_businesses([BusinessLead(id="b", name="X", source_niches=["pace_programs_se"])])
+    row = tmp_repo.get_businesses()[0]
+    assert row["source_niches"] == ["pace_programs_se"]
+
+
 def test_business_contact_enrichment_preserved_on_rescan(tmp_repo):
     tmp_repo.add_businesses([BusinessLead(id="x", name="X")])
     tmp_repo.update_business("x", {"email": "owner@x.com", "contacts": [{"name": "Jane"}]})
