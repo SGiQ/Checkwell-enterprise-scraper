@@ -531,6 +531,23 @@
                 <div class="stat-card"><div class="label">Overdue Follow-ups</div><div class="value high" id="pipelineStatOverdue">-</div><div class="sub">need attention</div></div>
             </div>
 
+            <!-- Scheduled emails queue -->
+            <div class="panel" style="margin-bottom:14px;border-left:3px solid #22c55e">
+                <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h3 style="display:flex;align-items:center;gap:10px">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>
+                        Scheduled Emails
+                    </h3>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span style="color:#94a3b8;font-size:12px"><span id="scheduledEmailsCount">0</span> in queue</span>
+                        <button onclick="loadScheduledEmails()" style="background:#0ea5e9;color:#fff;border:0;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Refresh</button>
+                    </div>
+                </div>
+                <div class="panel-body" style="padding:0" id="scheduledEmailsList">
+                    <div style="color:#475569;font-size:12px;padding:10px;text-align:center">no scheduled emails</div>
+                </div>
+            </div>
+
             <div id="pipelineStages"></div>
 
             <!-- Prospect Detail Drawer -->
@@ -633,6 +650,41 @@
     <!-- Toast -->
     <div class="toast" id="toast"></div>
 
+    <!-- Email Compose Modal (Phase B email scheduler) -->
+    <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center">
+        <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;width:min(640px,94vw);max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,0.5)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+                <div>
+                    <div id="emailModalSubtitle" style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px"></div>
+                    <h3 style="margin:4px 0 0 0;font-size:16px">Compose Email</h3>
+                </div>
+                <button onclick="closeEmailModal()" style="background:transparent;border:0;color:#94a3b8;font-size:24px;cursor:pointer;padding:0 8px">&times;</button>
+            </div>
+            <div id="emailModalTransportWarning" style="display:none;background:#1e1c0d;border:1px solid #f59e0b;border-left:3px solid #f59e0b;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#fcd34d"></div>
+            <div class="form-group" style="margin-bottom:10px">
+                <label style="font-size:11px;color:#94a3b8">To</label>
+                <input type="email" id="emailModalTo" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px">
+            </div>
+            <div class="form-group" style="margin-bottom:10px">
+                <label style="font-size:11px;color:#94a3b8">Subject</label>
+                <input type="text" id="emailModalSubject" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px">
+            </div>
+            <div class="form-group" style="margin-bottom:14px">
+                <label style="font-size:11px;color:#94a3b8">Body</label>
+                <textarea id="emailModalBody" rows="14" style="width:100%;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px;font-family:inherit;font-size:13px;line-height:1.5;resize:vertical"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:14px">
+                <label style="font-size:11px;color:#94a3b8">Schedule for (leave blank = send now)</label>
+                <input type="datetime-local" id="emailModalScheduledFor" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;margin-top:4px">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+                <button onclick="closeEmailModal()" style="background:#475569;color:#fff;border:0;padding:9px 16px;border-radius:6px;cursor:pointer;font-size:13px">Cancel</button>
+                <button onclick="openInMailto()" style="background:#0ea5e9;color:#fff;border:0;padding:9px 16px;border-radius:6px;cursor:pointer;font-size:13px" title="Open in your default mail client to send manually">Open in mailto</button>
+                <button id="emailModalScheduleBtn" onclick="submitScheduledEmail()" style="background:#22c55e;color:#fff;border:0;padding:9px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Schedule send</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // State
         let currentFilters = { intent: '', status: '', search: '', page: 1 };
@@ -648,7 +700,7 @@
                 document.getElementById('tab-' + item.dataset.tab).classList.add('active');
                 if (item.dataset.tab === 'leads') loadLeads();
                 if (item.dataset.tab === 'businesses') loadBusinesses();
-                if (item.dataset.tab === 'pipeline') loadPipeline();
+                if (item.dataset.tab === 'pipeline') { loadPipeline(); loadScheduledEmails(); }
                 if (item.dataset.tab === 'replies') loadRepliesTab();
                 if (item.dataset.tab === 'directory') loadDirectory();
                 if (item.dataset.tab === 'history') loadScanLogs();
@@ -1115,6 +1167,9 @@
             }
         }
 
+        // ---------- Email compose modal --------------------------------
+        let emailModalState = null;   // { prospect_id, lead_type, business_name, prospect_email }
+
         async function draftOutreach(id) {
             try {
                 const r = await fetch('/api/outreach/draft', {
@@ -1124,20 +1179,171 @@
                 });
                 const d = await r.json();
                 if (d.error) { alert(d.error); return; }
-                // Open a mailto: with subject + body pre-filled when we have an email,
-                // otherwise show the draft so user can copy/paste.
-                if (d.email) {
-                    const mailto = `mailto:${d.email}?subject=${encodeURIComponent(d.subject)}&body=${encodeURIComponent(d.body)}`;
-                    window.open(mailto, '_blank');
-                } else {
-                    const w = window.open('', '_blank');
-                    w.document.write(`<pre style="font-family:system-ui;padding:24px;white-space:pre-wrap;line-height:1.5">
-<b>To:</b> (no email on file — try ${d.phone || 'their website'})
-<b>Subject:</b> ${d.subject}
-
-${d.body}</pre>`);
-                }
+                openEmailModal({
+                    prospect_id: id,
+                    lead_type: 'business',
+                    business_name: d.business_name || '',
+                    to_email: d.email || '',
+                    phone: d.phone || '',
+                    subject: d.subject || '',
+                    body: d.body || '',
+                });
             } catch (e) { alert('Draft failed: ' + e.message); }
+        }
+
+        async function openEmailModal(args) {
+            emailModalState = {
+                prospect_id: args.prospect_id,
+                lead_type: args.lead_type || 'business',
+                business_name: args.business_name || '',
+                phone: args.phone || '',
+            };
+            document.getElementById('emailModalSubtitle').textContent =
+                (args.business_name || 'Prospect') + (args.phone ? ` · ${args.phone}` : '');
+            document.getElementById('emailModalTo').value = args.to_email || '';
+            document.getElementById('emailModalSubject').value = args.subject || '';
+            document.getElementById('emailModalBody').value = args.body || '';
+            document.getElementById('emailModalScheduledFor').value = '';
+
+            // Transport-status warning banner
+            const warn = document.getElementById('emailModalTransportWarning');
+            const scheduleBtn = document.getElementById('emailModalScheduleBtn');
+            try {
+                const tStatus = await (await fetch('/api/emails/transport')).json();
+                if (tStatus.configured) {
+                    warn.style.display = 'none';
+                    scheduleBtn.disabled = false;
+                    scheduleBtn.style.opacity = '1';
+                    scheduleBtn.title = '';
+                } else {
+                    warn.style.display = 'block';
+                    warn.innerHTML = '<strong>Scheduled send disabled.</strong> Set <code>RESEND_API_KEY</code> + <code>CWSCRAPER_FROM_EMAIL</code> in Railway to enable. <em>Use "Open in mailto" to send manually for now.</em>';
+                    scheduleBtn.disabled = true;
+                    scheduleBtn.style.opacity = '0.4';
+                    scheduleBtn.title = 'Email transport not configured';
+                }
+            } catch (e) { warn.style.display = 'none'; }
+
+            document.getElementById('emailModal').style.display = 'flex';
+        }
+
+        function closeEmailModal() {
+            document.getElementById('emailModal').style.display = 'none';
+            emailModalState = null;
+        }
+
+        function openInMailto() {
+            const to = document.getElementById('emailModalTo').value.trim();
+            const subj = document.getElementById('emailModalSubject').value;
+            const body = document.getElementById('emailModalBody').value;
+            if (!to) { showToast('Add a recipient email first', true); return; }
+            const url = `mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+            window.open(url, '_blank');
+        }
+
+        async function submitScheduledEmail() {
+            if (!emailModalState) return;
+            const to_email = document.getElementById('emailModalTo').value.trim();
+            const subject  = document.getElementById('emailModalSubject').value;
+            const body     = document.getElementById('emailModalBody').value;
+            const sched    = document.getElementById('emailModalScheduledFor').value;
+
+            if (!to_email) { showToast('Recipient email required', true); return; }
+            if (!subject)  { showToast('Subject required', true); return; }
+            if (!body)     { showToast('Body required', true); return; }
+
+            const scheduled_for = sched
+                ? new Date(sched).toISOString()   // datetime-local -> UTC ISO
+                : 'now';
+
+            try {
+                const r = await fetch('/api/emails/schedule', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        prospect_id: emailModalState.prospect_id,
+                        lead_type: emailModalState.lead_type,
+                        to_email, subject, body, scheduled_for,
+                    }),
+                });
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                const when = sched
+                    ? new Date(sched).toLocaleString()
+                    : 'next dispatcher tick (< 60s)';
+                showToast(`Scheduled for ${when}`);
+                closeEmailModal();
+                // Refresh views that might show queue / pipeline
+                loadScheduledEmails();
+            } catch (e) { showToast('Schedule failed: ' + e.message, true); }
+        }
+
+        // ---------- Scheduled email queue ------------------------------
+        async function loadScheduledEmails() {
+            const container = document.getElementById('scheduledEmailsList');
+            if (!container) return;
+            try {
+                const r = await fetch('/api/emails/scheduled');
+                const d = await r.json();
+                const emails = d.emails || [];
+                if (emails.length === 0) {
+                    container.innerHTML = '<div style="color:#475569;font-size:12px;padding:10px;text-align:center">no scheduled emails</div>';
+                    document.getElementById('scheduledEmailsCount').textContent = '0';
+                    return;
+                }
+                document.getElementById('scheduledEmailsCount').textContent = emails.length;
+                container.innerHTML = emails.slice(0, 20).map(_renderScheduledEmailRow).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        function _renderScheduledEmailRow(e) {
+            const when = e.scheduled_for ? new Date(e.scheduled_for).toLocaleString() : '';
+            const statusColors = {
+                pending: '#3b82f6', sent: '#22c55e',
+                failed: '#dc2626', cancelled: '#64748b',
+            };
+            const color = statusColors[e.status] || '#94a3b8';
+            const cancelBtn = e.status === 'pending'
+                ? `<button onclick="cancelScheduledEmail('${e.id}')" style="background:transparent;border:1px solid #7f1d1d;color:#fca5a5;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px">Cancel</button>`
+                : '';
+            const sendNowBtn = e.status === 'pending'
+                ? `<button onclick="sendScheduledEmailNow('${e.id}')" style="background:transparent;border:1px solid #064e3b;color:#86efac;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;margin-right:4px">Send now</button>`
+                : '';
+            const errorLine = e.error ? `<div style="font-size:11px;color:#fca5a5;margin-top:2px">${e.error}</div>` : '';
+            return `<div style="padding:10px 14px;border-bottom:1px solid #1e293b;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px"><strong>${e.subject || '(no subject)'}</strong></div>
+                    <div style="font-size:11px;color:#94a3b8">to ${e.to_email} · ${when}</div>
+                    ${errorLine}
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                    <div style="margin-bottom:4px">
+                        <span style="background:${color}22;color:${color};padding:2px 6px;border-radius:3px;font-size:10px;text-transform:uppercase;font-weight:600">${e.status}</span>
+                    </div>
+                    ${sendNowBtn}${cancelBtn}
+                </div>
+            </div>`;
+        }
+
+        async function cancelScheduledEmail(emailId) {
+            if (!confirm('Cancel this scheduled email?')) return;
+            try {
+                const r = await fetch(`/api/emails/${emailId}/cancel`, {method: 'POST'});
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                showToast('Email cancelled');
+                loadScheduledEmails();
+            } catch (e) { showToast('Cancel failed: ' + e.message, true); }
+        }
+
+        async function sendScheduledEmailNow(emailId) {
+            try {
+                const r = await fetch(`/api/emails/${emailId}/send-now`, {method: 'POST'});
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                showToast('Sending now (will appear sent on next refresh)');
+                setTimeout(loadScheduledEmails, 2000);
+            } catch (e) { showToast('Send-now failed: ' + e.message, true); }
         }
 
         // ---------- Pipeline (CRM-lite) ---------------------------------
