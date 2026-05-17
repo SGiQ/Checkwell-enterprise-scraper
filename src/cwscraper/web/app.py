@@ -16,7 +16,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_file,
 from cwscraper import __version__
 from cwscraper.core.engine import ScanEngine
 from cwscraper.core.models import PIPELINE_STAGE_LABELS, PIPELINE_STAGES
-from cwscraper.core.niche import list_bundled_niches, load_niche
+from cwscraper.core.niche import category_to_niche_map, list_bundled_niches, load_niche
 from cwscraper.core.preflight import evaluate as evaluate_preflight
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
@@ -613,6 +613,57 @@ def create_app() -> Flask:
             "contacts": [],
             "message": "Enricher ran but found no contacts",
             "errors": enrich_ctx.errors,
+        })
+
+    @app.route("/api/businesses/backfill-niches", methods=["POST"])
+    def api_business_backfill_niches():
+        """One-shot: stamp source_niches onto rows that lack the tag.
+
+        Uses each row's `category` field (set by the scanner when discovered)
+        to reverse-lookup which niche pack discovered it. Returns a summary
+        of how many got tagged and how many couldn't be matched.
+
+        Idempotent: businesses that already have source_niches are skipped.
+        Safe to call repeatedly.
+        """
+        cat_to_niche = category_to_niche_map()
+        businesses = repo.get_businesses()
+
+        tagged = 0
+        unmatched_categories: dict[str, int] = {}
+        skipped_already_tagged = 0
+        # Build the new full list in-memory, write once at the end
+        for b in businesses:
+            if b.get("source_niches"):
+                skipped_already_tagged += 1
+                continue
+            cat = (b.get("category") or "").strip()
+            niche_slug = cat_to_niche.get(cat)
+            if niche_slug:
+                b["source_niches"] = [niche_slug]
+                tagged += 1
+            else:
+                unmatched_categories[cat or "(empty)"] = (
+                    unmatched_categories.get(cat or "(empty)", 0) + 1
+                )
+
+        # Write back via the repo (no public bulk-set method; reach into the
+        # JSON file directly since this is admin-only).
+        if tagged:
+            import json as _json
+            repo.businesses_file.write_text(
+                _json.dumps(businesses, indent=2), encoding="utf-8"
+            )
+
+        return jsonify({
+            "ok": True,
+            "tagged": tagged,
+            "skipped_already_tagged": skipped_already_tagged,
+            "unmatched": [
+                {"category": c, "count": n}
+                for c, n in sorted(unmatched_categories.items(), key=lambda x: -x[1])
+            ],
+            "category_to_niche_map": cat_to_niche,
         })
 
     @app.route("/api/businesses/niches")

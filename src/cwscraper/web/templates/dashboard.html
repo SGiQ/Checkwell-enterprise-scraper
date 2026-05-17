@@ -1058,12 +1058,40 @@
                 for (const n of (d.niches || [])) {
                     opts += `<option value="${n.slug}">${n.slug} (${n.count})</option>`;
                 }
+                // If there are untagged rows, expose a special action value
+                // the change-handler will recognize and turn into a backfill.
                 if ((d.untagged || 0) > 0) {
-                    opts += `<option value="" disabled style="color:#64748b">+ ${d.untagged} untagged (run a scan to tag)</option>`;
+                    opts += `<option value="__backfill__" style="color:#a855f7;font-weight:600">&#9888; Auto-tag ${d.untagged} untagged by category</option>`;
                 }
                 sel.innerHTML = opts;
-                if (prev) sel.value = prev;   // preserve user's selection
+                if (prev) sel.value = prev;
+                // Wire the special action (idempotent — fine to reattach)
+                sel.onchange = async function () {
+                    if (sel.value === '__backfill__') {
+                        sel.value = '';   // don't keep the action selected
+                        await runNicheBackfill();
+                        return;
+                    }
+                    loadBusinesses();
+                };
             } catch (e) { console.error('niche filter populate failed', e); }
+        }
+
+        async function runNicheBackfill() {
+            showToast('Tagging untagged businesses by category...');
+            try {
+                const r = await fetch('/api/businesses/backfill-niches', {method: 'POST'});
+                const d = await r.json();
+                if (d.error) { showToast(d.error, true); return; }
+                const msgs = [`Tagged ${d.tagged} businesses`];
+                if (d.unmatched && d.unmatched.length) {
+                    const totalUnmatched = d.unmatched.reduce((s, u) => s + u.count, 0);
+                    msgs.push(`(${totalUnmatched} couldn't be matched — categories without a known niche)`);
+                }
+                showToast(msgs.join(' '));
+                // Reload everything so the new tags surface
+                loadBusinesses();
+            } catch (e) { showToast('Backfill failed: ' + e.message, true); }
         }
 
         async function updateBizStatus(id, status) {

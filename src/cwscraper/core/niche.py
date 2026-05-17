@@ -92,6 +92,29 @@ class NichePack:
         return None
 
 
+def category_to_niche_map() -> dict[str, str]:
+    """Build a {category_label -> niche_slug} index from every bundled niche.
+
+    Used to backfill `source_niches` on businesses that were discovered
+    before the field existed: the niche scanner had already stamped its
+    `category_label` onto each business's `category` field, so we can
+    reverse-look-up what niche they came from.
+
+    If two niches share a category_label (shouldn't happen in practice
+    but could), the first one wins (alphabetical order).
+    """
+    mapping: dict[str, str] = {}
+    for meta in list_bundled_niches():
+        try:
+            pack = load_niche(meta["slug"])
+        except Exception:
+            continue
+        label = (pack.directory.category_label or "").strip()
+        if label and label not in mapping:
+            mapping[label] = pack.slug
+    return mapping
+
+
 def list_bundled_niches() -> list[dict]:
     """Discover every niche pack bundled in cwscraper/niches/*.yaml.
 

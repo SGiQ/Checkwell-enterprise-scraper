@@ -199,6 +199,56 @@ def test_businesses_niches_endpoint_counts(app_client, tmp_path):
     assert d["untagged"] >= 1
 
 
+def test_backfill_niches_from_category(app_client, tmp_path):
+    """Untagged rows get source_niches stamped based on their category field."""
+    repo = JSONRepository(data_dir=tmp_path)
+    repo.add_businesses([
+        # category matches senior_care_agencies_se's category_label
+        BusinessLead(id="b1", name="Acme Home Care", category="senior_care_agency"),
+        # category matches pace_programs_se
+        BusinessLead(id="b2", name="Tampa PACE", category="pace_program"),
+        # category matches area_agencies_on_aging_se
+        BusinessLead(id="b3", name="SC Aging Council", category="area_agency_on_aging"),
+        # Unknown category — should not get tagged
+        BusinessLead(id="b4", name="Unknown Co", category="some_random_type"),
+        # Already tagged — should be skipped
+        BusinessLead(id="b5", name="Already Tagged",
+                     category="senior_care_agency",
+                     source_niches=["senior_care_agencies_se"]),
+    ])
+
+    r = app_client.post("/api/businesses/backfill-niches")
+    body = r.get_json()
+    assert r.status_code == 200
+    assert body["ok"] is True
+    assert body["tagged"] == 3                # b1, b2, b3
+    assert body["skipped_already_tagged"] >= 1  # b5 (and fixture biz1 maybe)
+    unmatched_cats = {u["category"] for u in body["unmatched"]}
+    assert "some_random_type" in unmatched_cats
+
+    # Verify the file actually got the tags
+    rows = repo.get_businesses()
+    by_id = {b["id"]: b for b in rows}
+    assert by_id["b1"]["source_niches"] == ["senior_care_agencies_se"]
+    assert by_id["b2"]["source_niches"] == ["pace_programs_se"]
+    assert by_id["b3"]["source_niches"] == ["area_agencies_on_aging_se"]
+    assert by_id["b4"]["source_niches"] == []
+    assert by_id["b5"]["source_niches"] == ["senior_care_agencies_se"]
+
+
+def test_backfill_is_idempotent(app_client, tmp_path):
+    """Running backfill twice should be a no-op the second time."""
+    repo = JSONRepository(data_dir=tmp_path)
+    repo.add_businesses([
+        BusinessLead(id="x", name="X", category="pace_program"),
+    ])
+    first = app_client.post("/api/businesses/backfill-niches").get_json()
+    second = app_client.post("/api/businesses/backfill-niches").get_json()
+    assert first["tagged"] == 1
+    assert second["tagged"] == 0
+    assert second["skipped_already_tagged"] >= 1
+
+
 def test_businesses_filter_has_email(app_client, tmp_path):
     repo = JSONRepository(data_dir=tmp_path)
     repo.add_businesses([
