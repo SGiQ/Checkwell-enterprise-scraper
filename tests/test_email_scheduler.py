@@ -17,6 +17,7 @@ from cwscraper.email.dispatcher import EmailDispatcher
 from cwscraper.email.queue import ScheduledEmailQueue
 from cwscraper.email.transport import (
     ResendTransport,
+    SmtpTransport,
     TransportError,
     get_transport,
 )
@@ -94,16 +95,148 @@ def test_resend_send_raises_on_http_error(monkeypatch):
 def test_get_transport_returns_resend_when_configured(monkeypatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_x")
     monkeypatch.setenv("CWSCRAPER_FROM_EMAIL", "x@y.com")
-    monkeypatch.delenv("EMAIL_TRANSPORT", raising=False)
+    for var in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_TRANSPORT"):
+        monkeypatch.delenv(var, raising=False)
     t = get_transport()
     assert t is not None
     assert t.name == "resend"
 
 
 def test_get_transport_returns_none_when_nothing_configured(monkeypatch):
-    for var in ("RESEND_API_KEY", "CWSCRAPER_FROM_EMAIL", "EMAIL_TRANSPORT"):
+    for var in (
+        "RESEND_API_KEY", "CWSCRAPER_FROM_EMAIL", "EMAIL_TRANSPORT",
+        "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD",
+    ):
         monkeypatch.delenv(var, raising=False)
     assert get_transport() is None
+
+
+# ---------- SMTP transport (Gmail-friendly) -------------------------------
+
+def _clear_email_env(monkeypatch):
+    for var in (
+        "EMAIL_TRANSPORT",
+        "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_USE_TLS",
+        "RESEND_API_KEY", "CWSCRAPER_FROM_EMAIL", "CWSCRAPER_FROM_NAME",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_smtp_unconfigured_when_missing_pieces(monkeypatch):
+    _clear_email_env(monkeypatch)
+    assert SmtpTransport().configured is False
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    assert SmtpTransport().configured is False  # still missing user/password
+    monkeypatch.setenv("SMTP_USER", "shaun@sgiq.ai")
+    assert SmtpTransport().configured is False
+    monkeypatch.setenv("SMTP_PASSWORD", "app-pwd-16chars1")
+    assert SmtpTransport().configured is True
+
+
+def test_smtp_send_with_gmail_settings(monkeypatch):
+    _clear_email_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_USER", "shaun@sgiq.ai")
+    monkeypatch.setenv("SMTP_PASSWORD", "16-char-app-pwd!")
+    monkeypatch.setenv("CWSCRAPER_FROM_NAME", "Shaun")
+
+    fake_smtp = MagicMock()
+    fake_smtp.__enter__ = MagicMock(return_value=fake_smtp)
+    fake_smtp.__exit__ = MagicMock(return_value=False)
+
+    with patch("cwscraper.email.transport.smtplib.SMTP", return_value=fake_smtp) as ctor:
+        result = SmtpTransport().send(
+            to_email="janet@homecare.example",
+            subject="Hi Janet",
+            body_text="Hello",
+            reply_to="shaun@sgiq.ai",
+        )
+
+    ctor.assert_called_once_with("smtp.gmail.com", 587, timeout=20)
+    # STARTTLS path on port 587
+    fake_smtp.starttls.assert_called()
+    fake_smtp.login.assert_called_once_with("shaun@sgiq.ai", "16-char-app-pwd!")
+    fake_smtp.send_message.assert_called_once()
+
+    # Verify the EmailMessage we sent has the right shape
+    sent_msg = fake_smtp.send_message.call_args[0][0]
+    assert sent_msg["To"] == "janet@homecare.example"
+    assert sent_msg["Subject"] == "Hi Janet"
+    assert "shaun@sgiq.ai" in sent_msg["From"]
+    assert sent_msg["Reply-To"] == "shaun@sgiq.ai"
+
+    assert result["transport"] == "smtp"
+    assert result["provider_id"].startswith("<")  # Message-ID format
+
+
+def test_smtp_uses_ssl_on_port_465(monkeypatch):
+    _clear_email_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_PORT", "465")
+    monkeypatch.setenv("SMTP_USER", "u@example.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "p")
+
+    fake_smtp = MagicMock()
+    fake_smtp.__enter__ = MagicMock(return_value=fake_smtp)
+    fake_smtp.__exit__ = MagicMock(return_value=False)
+
+    with patch("cwscraper.email.transport.smtplib.SMTP_SSL", return_value=fake_smtp) as ssl_ctor:
+        with patch("cwscraper.email.transport.smtplib.SMTP") as plain_ctor:
+            SmtpTransport().send(
+                to_email="x@y.com", subject="s", body_text="b",
+            )
+
+    ssl_ctor.assert_called_once_with("smtp.example.com", 465, timeout=20)
+    plain_ctor.assert_not_called()
+    fake_smtp.starttls.assert_not_called()  # SSL doesn't STARTTLS
+
+
+def test_smtp_auth_error_has_helpful_message(monkeypatch):
+    _clear_email_env(monkeypatch)
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("SMTP_USER", "shaun@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "wrong-password")
+
+    import smtplib as _smtplib
+    fake_smtp = MagicMock()
+    fake_smtp.__enter__ = MagicMock(return_value=fake_smtp)
+    fake_smtp.__exit__ = MagicMock(return_value=False)
+    fake_smtp.login.side_effect = _smtplib.SMTPAuthenticationError(
+        535, b"Username and Password not accepted"
+    )
+
+    with patch("cwscraper.email.transport.smtplib.SMTP", return_value=fake_smtp):
+        with pytest.raises(TransportError, match="App Password"):
+            SmtpTransport().send(to_email="x@y.com", subject="s", body_text="b")
+
+
+def test_get_transport_prefers_smtp_when_both_configured(monkeypatch):
+    _clear_email_env(monkeypatch)
+    # Set both
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("SMTP_USER", "x@y.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "p")
+    monkeypatch.setenv("RESEND_API_KEY", "re_x")
+    monkeypatch.setenv("CWSCRAPER_FROM_EMAIL", "x@y.com")
+
+    t = get_transport()
+    assert t is not None
+    assert t.name == "smtp"
+
+
+def test_get_transport_honors_explicit_resend_override(monkeypatch):
+    _clear_email_env(monkeypatch)
+    monkeypatch.setenv("EMAIL_TRANSPORT", "resend")
+    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+    monkeypatch.setenv("SMTP_USER", "x@y.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "p")
+    monkeypatch.setenv("RESEND_API_KEY", "re_x")
+    monkeypatch.setenv("CWSCRAPER_FROM_EMAIL", "x@y.com")
+
+    t = get_transport()
+    assert t is not None
+    assert t.name == "resend"
 
 
 # ---------- Queue ---------------------------------------------------------
