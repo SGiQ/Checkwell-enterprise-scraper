@@ -1245,7 +1245,7 @@
                     scheduleBtn.title = '';
                 } else {
                     warn.style.display = 'block';
-                    warn.innerHTML = '<strong>Scheduled send disabled.</strong> Set <code>RESEND_API_KEY</code> + <code>CWSCRAPER_FROM_EMAIL</code> in Railway to enable. <em>Use "Open in mailto" to send manually for now.</em>';
+                    warn.innerHTML = '<strong>Scheduled send disabled.</strong> Configure either SMTP (<code>SMTP_HOST</code> + <code>SMTP_USER</code> + <code>SMTP_PASSWORD</code>) <em>or</em> Resend (<code>RESEND_API_KEY</code> + <code>CWSCRAPER_FROM_EMAIL</code>) in Railway to enable. <em>Use "Open in mailto" to send manually for now.</em>';
                     scheduleBtn.disabled = true;
                     scheduleBtn.style.opacity = '0.4';
                     scheduleBtn.title = 'Email transport not configured';

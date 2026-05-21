@@ -998,9 +998,12 @@ def create_app() -> Flask:
         if not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", to_email):
             return jsonify({"error": f"Invalid to_email: {to_email!r}"}), 400
 
-        # Normalize scheduled_for: 'now' means right now (will fire on next tick)
-        scheduled_for_raw = (data.get("scheduled_for") or "now").strip().lower()
-        if scheduled_for_raw in ("now", ""):
+        # Normalize scheduled_for: 'now' means right now (will fire on next tick).
+        # Note: only lower-case for the 'now' alias check — Date.toISOString() in
+        # the dashboard emits an uppercase 'Z' suffix that datetime.fromisoformat
+        # only recognizes in upper case, so we must preserve case before parsing.
+        scheduled_for_raw = (data.get("scheduled_for") or "now").strip()
+        if scheduled_for_raw.lower() in ("now", ""):
             scheduled_for = datetime.now(timezone.utc).isoformat()
         else:
             try:
