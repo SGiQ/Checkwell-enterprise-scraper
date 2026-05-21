@@ -637,6 +637,84 @@ def create_app() -> Flask:
             "errors": enrich_ctx.errors,
         })
 
+    @app.route("/api/businesses/scrub-contact-names", methods=["POST"])
+    def api_business_scrub_contact_names():
+        """One-shot: clear junk contact names that fail _looks_like_name().
+
+        Use after deploying changes to the name filter (e.g. PR #6) to clean
+        up stale junk names already in the JSON store. For each contact on
+        each business, if its name fails the current filter, the name is
+        replaced with the empty string. The email and other contact fields
+        are preserved — drafts will then greet the recipient with "Hi there,"
+        instead of "Hi Accessibility Tools Accessibility,".
+
+        Body (optional):
+          {"dry_run": true}  — only count, don't modify
+
+        Returns:
+          {
+            "ok": true, "dry_run": bool,
+            "businesses_scanned": int,
+            "contacts_scanned": int,
+            "names_cleared": int,
+            "businesses_affected": int,
+            "sample": [{"business_name", "old_name"}, ...]   # up to 25
+          }
+        """
+        from cwscraper.enrichment.website_scraper import _looks_like_name
+        payload = request.get_json(silent=True) or {}
+        dry_run = bool(payload.get("dry_run", False))
+
+        businesses = repo.get_businesses()
+        contacts_scanned = 0
+        names_cleared = 0
+        businesses_affected = 0
+        sample: list[dict] = []
+
+        for b in businesses:
+            contacts = b.get("contacts") or []
+            if not contacts:
+                continue
+            biz_modified = False
+            for c in contacts:
+                contacts_scanned += 1
+                name = (c.get("name") or "").strip()
+                if not name:
+                    continue
+                if _looks_like_name(name):
+                    continue
+                if len(sample) < 25:
+                    sample.append({
+                        "business_name": b.get("name", ""),
+                        "old_name": name,
+                    })
+                names_cleared += 1
+                biz_modified = True
+                if not dry_run:
+                    c["name"] = ""
+            if biz_modified:
+                businesses_affected += 1
+
+        if not dry_run and businesses_affected:
+            # Write back via the repo's businesses_file directly — there's
+            # no public bulk-write method but the underlying JSON is a
+            # plain list and update_business() would be N round trips.
+            import json as _json
+            with repo._lock:
+                repo.businesses_file.write_text(
+                    _json.dumps(businesses, indent=2), encoding="utf-8"
+                )
+
+        return jsonify({
+            "ok": True,
+            "dry_run": dry_run,
+            "businesses_scanned": len(businesses),
+            "contacts_scanned": contacts_scanned,
+            "names_cleared": names_cleared,
+            "businesses_affected": businesses_affected,
+            "sample": sample,
+        })
+
     @app.route("/api/businesses/backfill-niches", methods=["POST"])
     def api_business_backfill_niches():
         """One-shot: stamp source_niches onto rows that lack the tag.
