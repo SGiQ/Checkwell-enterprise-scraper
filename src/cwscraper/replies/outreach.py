@@ -16,11 +16,19 @@ Templates that don't use {personalized_opener} keep working unchanged.
 """
 from __future__ import annotations
 
+import re
+
 from cwscraper.core.niche import NichePack, OutreachTemplate
 from cwscraper.replies.personalizer import Personalizer, PersonalizationResult
 
 
 _PERSONALIZED_OPENER_TOKEN = "{personalized_opener}"
+
+# When {personalized_opener} resolves to empty (no personalizer or AI failure
+# with an empty fallback), the template's surrounding blank lines leave a
+# stack of 3+ newlines. Collapse to a single blank line so the email still
+# reads naturally instead of looking templated.
+_MULTI_BLANK_LINES = re.compile(r"\n{3,}")
 
 
 def _pick_template(niche: NichePack, template_key: str | None) -> OutreachTemplate | None:
@@ -31,8 +39,9 @@ def _pick_template(niche: NichePack, template_key: str | None) -> OutreachTempla
 
 
 def _personalize(text: str, business: dict, contact_name: str, opener: str = "") -> str:
-    """Substitute every supported template variable in one pass."""
-    return (
+    """Substitute every supported template variable in one pass and collapse
+    any blank-line stacks that an empty opener left behind."""
+    substituted = (
         text
         .replace("{business_name}", business.get("name", "your team"))
         .replace("{city}",          business.get("city", "your area"))
@@ -42,6 +51,7 @@ def _personalize(text: str, business: dict, contact_name: str, opener: str = "")
         .replace("{phone}",         business.get("phone", ""))
         .replace(_PERSONALIZED_OPENER_TOKEN, opener)
     )
+    return _MULTI_BLANK_LINES.sub("\n\n", substituted)
 
 
 def draft_outreach(

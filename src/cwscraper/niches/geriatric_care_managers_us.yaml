@@ -59,50 +59,33 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      You probably have several clients in {city} whose adult children live
-      out of state and ask you variations of "is mom really OK between
-      visits?" CheckWellCall is built for exactly that question: daily
-      wellness check calls, with documented escalation to the care manager
-      or family when something's off.
+      You probably have several clients in {city} whose adult children live out of state and ask you variations of "is mom really OK between visits?" CheckWellCall is built for exactly that question: daily wellness check calls, with documented escalation to the care manager or family when something's off.
 
-      A few ways we work with care managers:
-        • White-label option: calls go out under your firm's name with our
-          team handling the actual call workflow
-        • Direct referral: we pay a referral fee on signups you send
-        • Co-branded family-facing dashboard so families see the wellness
-          report alongside your care plan updates
+      A few ways we work with care managers: • White-label option: calls go out under your firm's name with our team handling the actual call workflow • Direct referral: we pay a referral fee on signups you send • Co-branded family-facing dashboard so families see the wellness report alongside your care plan updates
 
-      Worth a 20-minute call to see if there's a fit? Happy to send a
-      one-pager first if that's easier.
+      Worth a 20-minute call to see if there's a fit? Happy to send a one-pager first if that's easier.
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — wellness check workflow for {business_name}"
     body: |
       Hi {contact_name},
 
-      Following up on the note about wellness check workflows for care
-      manager firms. If now isn't the right time, no problem — happy to
-      reconnect in a quarter or two.
+      Following up on the note about wellness check workflows for care manager firms. If now isn't the right time, no problem — happy to reconnect in a quarter or two.
 
       Best,
       Shaun
-
   - key: white_label
     name: Cold Email — White-label Pitch
     subject: "White-label daily wellness checks for {business_name}'s clients"
     body: |
       Hi {contact_name},
 
-      Quick one: would a white-labeled daily wellness check service
-      strengthen what {business_name} offers your families? We do the call
-      workflow, you keep the client relationship and brand. Pricing is
-      designed to give you margin on every account.
+      Quick one: would a white-labeled daily wellness check service strengthen what {business_name} offers your families? We do the call workflow, you keep the client relationship and brand. Pricing is designed to give you margin on every account.
 
       Open to a quick call to talk through the structure?
 

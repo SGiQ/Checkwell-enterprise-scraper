@@ -55,56 +55,30 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      Many congregations have a small group of older or homebound members
-      who slip through the cracks between deacon visits, Sunday services,
-      and the formal pastoral-care rotation. CheckWellCall does daily
-      wellness check calls — a kind, scripted check-in — that flags any
-      day someone doesn't pick up or sounds concerning, then escalates to
-      family or your member-care team.
+      Many congregations have a small group of older or homebound members who slip through the cracks between deacon visits, Sunday services, and the formal pastoral-care rotation. CheckWellCall does daily wellness check calls — a kind, scripted check-in — that flags any day someone doesn't pick up or sounds concerning, then escalates to family or your member-care team.
 
-      A few ways {business_name} could use us:
-        • Add a wellness-check ministry without adding volunteer hours
-        • Catch isolation, depression, and missed medications early
-        • Give peace of mind to adult children of your members who live
-          out of state
+      A few ways {business_name} could use us: • Add a wellness-check ministry without adding volunteer hours • Catch isolation, depression, and missed medications early • Give peace of mind to adult children of your members who live out of state
 
-      We work with several SE US churches on a discounted partnership
-      basis. Open to a 15-minute call to explore whether it could be a
-      fit for {business_name}?
+      We work with several SE US churches on a discounted partnership basis. Open to a 15-minute call to explore whether it could be a fit for {business_name}?
 
-      Blessings,
-      Shaun
-      SGiQ Business Strategies | CheckWellCall
-      1-877-343-1891 | checkwellcall.com
-
+      Blessings, Shaun SGiQ Business Strategies | CheckWellCall 1-877-343-1891 | checkwellcall.com
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — wellness-check ministry for {business_name}"
     body: |
       Hi {contact_name},
 
-      Following up on the note about a daily wellness-check ministry for
-      {business_name}'s homebound members. No pressure either way —
-      happy to send a one-pager you can share with the elders or member
-      care committee if that's easier than a call.
+      Following up on the note about a daily wellness-check ministry for {business_name}'s homebound members. No pressure either way — happy to send a one-pager you can share with the elders or member care committee if that's easier than a call.
 
-      Blessings,
-      Shaun
-
+      Blessings, Shaun
   - key: referral_source
     name: Cold Email — Referral Source
     subject: "{city} families looking for senior-care guidance"
     body: |
       Hi {contact_name},
 
-      We work with families across {city} caring for aging parents, and
-      a meaningful number of them ask us about local faith communities —
-      especially for the spiritual-care side of eldercare that we can't
-      provide ourselves.
+      We work with families across {city} caring for aging parents, and a meaningful number of them ask us about local faith communities — especially for the spiritual-care side of eldercare that we can't provide ourselves.
 
-      Could {business_name} be on the short list we recommend to {city},
-      {state} families? Quick intro call to see if there's a fit?
+      Could {business_name} be on the short list we recommend to {city}, {state} families? Quick intro call to see if there's a fit?
 
-      Blessings,
-      Shaun
-      SGiQ Business Strategies | CheckWellCall
+      Blessings, Shaun SGiQ Business Strategies | CheckWellCall

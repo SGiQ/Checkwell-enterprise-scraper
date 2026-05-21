@@ -65,18 +65,9 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      {business_name} probably fields dozens of inquiries each month
-      from {city} families saying some version of "my mom is alone and
-      we're worried." For the families whose situation is more
-      monitoring-need than acute-need, CheckWellCall is the fit:
-      affordable daily wellness check calls with documented escalation
-      to family when something seems off.
+      {business_name} probably fields dozens of inquiries each month from {city} families saying some version of "my mom is alone and we're worried." For the families whose situation is more monitoring-need than acute-need, CheckWellCall is the fit: affordable daily wellness check calls with documented escalation to family when something seems off.
 
-      A few SE US AAAs include us on their I&R referral list as one
-      option in the "monitoring & companionship" category. We'd be
-      grateful for the chance to be vetted for {business_name}'s
-      referral resources — happy to send compliance documentation,
-      pricing, and references.
+      A few SE US AAAs include us on their I&R referral list as one option in the "monitoring & companionship" category. We'd be grateful for the chance to be vetted for {business_name}'s referral resources — happy to send compliance documentation, pricing, and references.
 
       Open to a brief introduction call?
 
@@ -84,38 +75,26 @@ outreach_templates:
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: caregiver_program
     name: Cold Email — Caregiver Support Program Partnership
     subject: "Wellness checks as a caregiver-support benefit for {business_name}"
     body: |
       Hi {contact_name},
 
-      Title III-E Caregiver Support funds at most AAAs already cover
-      respite, counseling, and education for family caregivers — but
-      the actual reduction in caregiver stress comes from removing the
-      day-to-day monitoring burden. A daily wellness check on the care
-      recipient does more for caregiver wellbeing than a one-time
-      respite week.
+      Title III-E Caregiver Support funds at most AAAs already cover respite, counseling, and education for family caregivers — but the actual reduction in caregiver stress comes from removing the day-to-day monitoring burden. A daily wellness check on the care recipient does more for caregiver wellbeing than a one-time respite week.
 
-      Could CheckWellCall be a reimbursable service under {business_name}'s
-      caregiver-support program? A few SE US AAAs are exploring this
-      structure. Worth a 15-minute call to discuss?
+      Could CheckWellCall be a reimbursable service under {business_name}'s caregiver-support program? A few SE US AAAs are exploring this structure. Worth a 15-minute call to discuss?
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — CheckWellCall as a referral resource"
     body: |
       Hi {contact_name},
 
-      Circling back on the note about adding CheckWellCall to
-      {business_name}'s referral list. Happy to send a one-pager
-      (services, pricing, geographic coverage, compliance posture)
-      if a call doesn't fit right now.
+      Circling back on the note about adding CheckWellCall to {business_name}'s referral list. Happy to send a one-pager (services, pricing, geographic coverage, compliance posture) if a call doesn't fit right now.
 
       Best,
       Shaun

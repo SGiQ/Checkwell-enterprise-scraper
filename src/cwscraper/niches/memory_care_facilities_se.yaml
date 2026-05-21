@@ -49,22 +49,11 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      Most {city} memory care admissions come from families who said
-      "we'll do this at home as long as we can." That phase often lasts
-      6-18 months, and the moment it stops being safe is usually invisible
-      until a fall or a wandering incident forces the decision.
+      Most {city} memory care admissions come from families who said "we'll do this at home as long as we can." That phase often lasts 6-18 months, and the moment it stops being safe is usually invisible until a fall or a wandering incident forces the decision.
 
-      CheckWellCall does daily wellness check calls for those families.
-      The repeated daily conversations are what surface the slow declines
-      — confusion patterns, missed meals, increasingly anxious tone —
-      that signal "it's time to look at memory care."
+      CheckWellCall does daily wellness check calls for those families. The repeated daily conversations are what surface the slow declines — confusion patterns, missed meals, increasingly anxious tone — that signal "it's time to look at memory care."
 
-      Two ways {business_name} could partner with us:
-        • Families we work with who move to facility care often need a
-          short list of trusted local memory care options
-        • For your current residents whose families live out of state,
-          weekly family check-in calls keep them engaged and reduce
-          'distant family second-guessing'
+      Two ways {business_name} could partner with us: • Families we work with who move to facility care often need a short list of trusted local memory care options • For your current residents whose families live out of state, weekly family check-in calls keep them engaged and reduce 'distant family second-guessing'
 
       Worth a 15-minute call to talk it through?
 
@@ -72,32 +61,25 @@ outreach_templates:
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — memory care partnership"
     body: |
       Hi {contact_name},
 
-      Circling back on the wellness check partnership note for
-      {business_name}. Happy to send a brief overview if a call doesn't
-      fit right now.
+      Circling back on the wellness check partnership note for {business_name}. Happy to send a brief overview if a call doesn't fit right now.
 
       Best,
       Shaun
-
   - key: referral_partner
     name: Cold Email — Referral Source
     subject: "Memory care referrals in {city}"
     body: |
       Hi {contact_name},
 
-      We work with families in {city}, {state} whose parent has a
-      dementia diagnosis. When home care stops being viable we refer to
-      vetted local memory care communities.
+      We work with families in {city}, {state} whose parent has a dementia diagnosis. When home care stops being viable we refer to vetted local memory care communities.
 
-      Could {business_name} be on our short list? Quick call to see if
-      you're accepting new inquiries?
+      Could {business_name} be on our short list? Quick call to see if you're accepting new inquiries?
 
       Best,
       Shaun

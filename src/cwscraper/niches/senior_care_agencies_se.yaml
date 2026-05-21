@@ -67,53 +67,37 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      I run CheckWellCall — a daily wellness check service for seniors aging
-      in place. We do the human follow-up call most agencies don't have the
-      bandwidth for: friendly check-ins, escalation to family or your team if
-      something seems off, and a clean audit trail your families can see.
+      I run CheckWellCall — a daily wellness check service for seniors aging in place. We do the human follow-up call most agencies don't have the bandwidth for: friendly check-ins, escalation to family or your team if something seems off, and a clean audit trail your families can see.
 
-      A few {city} agencies we work with use us as:
-        • a value-add for clients between scheduled visits
-        • a way to catch deterioration earlier than the next scheduled care call
-        • a low-risk pilot before expanding home-care frequency
+      A few {city} agencies we work with use us as: • a value-add for clients between scheduled visits • a way to catch deterioration earlier than the next scheduled care call • a low-risk pilot before expanding home-care frequency
 
-      Would a 15-minute call this week or next make sense? Happy to share what
-      pricing looks like and whether the fit is right for {business_name}.
+      Would a 15-minute call this week or next make sense? Happy to share what pricing looks like and whether the fit is right for {business_name}.
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Quick follow-up — wellness checks for {business_name}"
     body: |
       Hi {contact_name},
 
-      Following up on my note last week about wellness check support for
-      {business_name}'s clients.
+      Following up on my note last week about wellness check support for {business_name}'s clients.
 
-      No pressure either way — wanted to make sure it landed. If now's not
-      the right time, I'd love to circle back in a quarter. If you'd like
-      more info, the short overview is at checkwellcall.com.
+      No pressure either way — wanted to make sure it landed. If now's not the right time, I'd love to circle back in a quarter. If you'd like more info, the short overview is at checkwellcall.com.
 
       Best,
       Shaun
-
   - key: referral_partner
     name: Cold Email — Referral Partner Pitch
     subject: "Sending {city} caregiver referrals your way"
     body: |
       Hi {contact_name},
 
-      We work with adult children across {city} who reach out looking for
-      caregiving help for a parent. CheckWellCall does daily wellness check
-      calls, but for in-home care we always refer to a small list of trusted
-      local agencies.
+      We work with adult children across {city} who reach out looking for caregiving help for a parent. CheckWellCall does daily wellness check calls, but for in-home care we always refer to a small list of trusted local agencies.
 
-      I'd like to learn whether {business_name} could be a good referral
-      partner for our {city}, {state} clients. Open to a quick intro call?
+      I'd like to learn whether {business_name} could be a good referral partner for our {city}, {state} clients. Open to a quick intro call?
 
       Best,
       Shaun
