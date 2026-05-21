@@ -38,6 +38,18 @@ def _pick_template(niche: NichePack, template_key: str | None) -> OutreachTempla
     )
 
 
+def _greeting_fallback(business: dict) -> str:
+    """When the contact name is unknown, render a fallback that uses
+    the business name where we have it — "First Senior Center team" reads
+    far less generic than the old "there" did.
+
+    Falls back to bare "team" only when the business name is missing,
+    which should be rare (every scraped business has a name).
+    """
+    name = (business.get("name") or "").strip()
+    return f"{name} team" if name else "team"
+
+
 def _personalize(text: str, business: dict, contact_name: str, opener: str = "") -> str:
     """Substitute every supported template variable in one pass and collapse
     any blank-line stacks that an empty opener left behind."""
@@ -46,7 +58,7 @@ def _personalize(text: str, business: dict, contact_name: str, opener: str = "")
         .replace("{business_name}", business.get("name", "your team"))
         .replace("{city}",          business.get("city", "your area"))
         .replace("{state}",         business.get("state", ""))
-        .replace("{contact_name}",  contact_name or "there")
+        .replace("{contact_name}",  contact_name or _greeting_fallback(business))
         .replace("{website}",       business.get("website", ""))
         .replace("{phone}",         business.get("phone", ""))
         .replace(_PERSONALIZED_OPENER_TOKEN, opener)
