@@ -65,6 +65,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       {business_name} probably fields dozens of inquiries each month from {city} families saying some version of "my mom is alone and we're worried." For the families whose situation is more monitoring-need than acute-need, CheckWellCall is the fit: affordable daily wellness check calls with documented escalation to family when something seems off.
 
       A few SE US AAAs include us on their I&R referral list as one option in the "monitoring & companionship" category. We'd be grateful for the chance to be vetted for {business_name}'s referral resources — happy to send compliance documentation, pricing, and references.
@@ -80,6 +82,8 @@ outreach_templates:
     subject: "Wellness checks as a caregiver-support benefit for {business_name}"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       Title III-E Caregiver Support funds at most AAAs already cover respite, counseling, and education for family caregivers — but the actual reduction in caregiver stress comes from removing the day-to-day monitoring burden. A daily wellness check on the care recipient does more for caregiver wellbeing than a one-time respite week.
 

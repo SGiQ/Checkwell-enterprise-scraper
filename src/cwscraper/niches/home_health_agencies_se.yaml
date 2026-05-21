@@ -50,6 +50,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       Home health visits are scheduled — but the days in between are where a lot of slow declines hide. CheckWellCall does daily wellness check calls that catch things between your clinicians' visits: confusion, withdrawal, missed meals, signs a fall happened off the record.
 
       A few {city} home health agencies use us as: • An early-warning layer between scheduled visits • A family-facing "we're still watching them" touch the agency owns • A retention play for clients whose families were considering stepping down service
@@ -75,6 +77,8 @@ outreach_templates:
     subject: "{city} clients who need more than a wellness check call"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       We do daily wellness checks for adult children of aging parents in {city}, {state}. Some of our calls escalate to "this client needs home-health visits now" — and right now we don't have a great referral list in {city}.
 

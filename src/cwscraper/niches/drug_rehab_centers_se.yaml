@@ -56,6 +56,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       The first 90 days post-discharge are where many older patients relapse — isolation, missed medication routines, the loss of the structure they had during treatment. {business_name}'s clinical team can't be on the phone with every patient daily, but the check-in cadence is what works.
 
       CheckWellCall provides exactly that: daily wellness check calls to elderly clients post-discharge, with documented escalation back to {business_name}'s alumni coordinator or the patient's family when something seems off — missed calls, behavioral changes, signs the support system at home is fraying.
@@ -71,6 +73,8 @@ outreach_templates:
     subject: "Support for adult children of {business_name}'s elderly clients"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       Adult children of older patients in recovery often face two problems at once: their parent is back home and stable but still fragile, and they themselves are running on empty from the treatment process.
 
