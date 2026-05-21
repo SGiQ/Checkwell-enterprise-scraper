@@ -55,6 +55,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       You probably get several calls a month from {city} families who'd
       benefit from PACE but don't qualify — income above the bracket,
       not nursing-home-level need yet, or outside {business_name}'s

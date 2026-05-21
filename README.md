@@ -127,6 +127,81 @@ Per-business `+ add email` button on the Businesses tab opens an inline editor f
 
 ---
 
+## Bulk personalized outreach
+
+Draft and queue cold emails for many businesses in one action, each with a unique AI-generated opener so the batch doesn't look templated to spam filters.
+
+### How it works
+
+1. The operator hits `POST /api/outreach/bulk-draft` with a list of `business_ids` + a `template_key`.
+2. For each business, the bulk drafter:
+   - Looks up the business row from the JSON store.
+   - Skips it if there's no email, if the recipient is on the suppression list, or if today's send caps are full.
+   - If the chosen template uses `{personalized_opener}`, calls Claude Haiku 4.5 to write a unique 1-2 sentence opener referencing the business's name / city / rating / category.
+   - Drafts the email (subject + body) and enqueues it in `scheduled_emails.json` with a staggered `scheduled_for` time.
+3. The existing dispatcher loop picks up the queued emails on its next tick and sends them through the configured SMTP / Resend transport.
+
+### Why personalize?
+
+The same template fired to 50 businesses with only `{business_name}` and `{city}` substituted is byte-identical to a spam filter. Within ~15 sends to `@gmail.com` addresses, Gmail's bulk-detection flags every email from your sender domain. A unique 1-2 sentence opener per recipient gives each email enough surface-area variation that the heuristic doesn't fire, and references something the recipient can plausibly think *"huh, they actually looked at us."*
+
+### Cost
+
+Claude Haiku 4.5 with prompt caching on the niche-level system prompt:
+
+- ~$0.001 per email after the first call in a batch (cache reads)
+- ~$0.87 to personalize 970 leads in one niche
+- Without caching (if your system prompt is too short to hit the cache threshold): ~$2.23 for the same volume
+
+The cache prefix is the brand voice + few-shot examples + niche description. The volatile part is just the per-business facts in the user message. Cache TTL is 5 minutes — a 25-business batch processes in ~20 seconds, well within the window.
+
+### Send-volume hygiene
+
+Cold outreach without volume controls burns sender reputation in hours. Three independent guardrails apply to every queued send:
+
+- **Daily cap** — never send more than `CWSCRAPER_SEND_DAILY_CAP` emails (sent + pending) per UTC day. Default 50.
+- **Per-domain cap** — never send more than `CWSCRAPER_SEND_PER_DOMAIN_DAILY_CAP` emails to any one recipient domain per UTC day. Default 5. Prevents Gmail seeing 20 cold emails from your sender to 20 of its addresses in an hour.
+- **Warm-up curve** — for the first 14 days after the first send, the effective cap is staged: 10/day → 25/day → full cap. Disable via `CWSCRAPER_SEND_WARMUP_DISABLED=true` (only on an already-warm domain).
+
+Check current limits + today's usage via `GET /api/emails/send-limits`.
+
+### Templates that opt in
+
+Templates in `src/cwscraper/niches/*.yaml` that include `{personalized_opener}` in their `subject` or `body` get the AI opener slotted in. Templates without the token are unaffected — they still ship through the bulk drafter, just without the AI step (and without the API call cost). PACE Programs is shipped with the variable on by default; the other 12 niches keep their legacy templates until you update them.
+
+### API
+
+```
+POST /api/outreach/bulk-draft
+  body: {
+    business_ids: ["biz1", "biz2", ...],   // required, max 200
+    template_key: "referral_partnership",   // optional, defaults to niche.default
+    start_at: "2026-05-22T14:00:00Z",       // optional, defaults to now + 60s
+    cadence_seconds: 180,                    // optional, min 30, default 180
+    from_email: "",                          // optional, env defaults
+    from_name: "",
+    reply_to: ""
+  }
+  returns: {
+    ok: true,
+    received: 25,
+    queued: 23,
+    skipped_suppressed: 1,
+    skipped_no_email: 1,
+    skipped_hygiene: 0,
+    personalized: 23,
+    personalization_fallback: 0,
+    results: [ ... per-business outcome ... ]
+  }
+
+GET  /api/outreach/personalizer/status   — is ANTHROPIC_API_KEY configured?
+GET  /api/emails/send-limits             — current caps + today's usage by domain
+```
+
+A dashboard UI for bulk selection (checkboxes + floating action bar + Settings page for caps) is planned for a follow-up PR. For now, drive it from `curl` or your own client against the API endpoints above.
+
+---
+
 ## Reply tracking & suppression
 
 Closes the outreach loop: instead of manually marking prospects as "replied" or "lost", a background poller fetches inbound mail, classifies it, and moves the pipeline automatically. Recipients who unsubscribe are added to a do-not-contact list and never see another send.
@@ -183,18 +258,21 @@ src/cwscraper/
 │   └── google_places.py  directory-mode (Places API New)
 ├── email/
 │   ├── transport.py         SMTP + Resend, with List-Unsubscribe headers
-│   ├── dispatcher.py        background sender (suppression-aware)
+│   ├── dispatcher.py        background sender (suppression + cap aware)
 │   ├── queue.py             scheduled-email queue
+│   ├── bulk.py              multi-business drafter w/ stagger + AI personalization
+│   ├── send_limits.py       daily cap, per-domain cap, warm-up curve
 │   ├── inbound.py           IMAP poller + reply classifier
 │   └── suppression.py       do-not-contact list
+├── replies/
+│   ├── drafter.py           community reply templates
+│   ├── outreach.py          B2B cold-email templates (now AI-opener-aware)
+│   ├── personalizer.py      Claude Haiku 4.5 per-recipient opener generator
+│   └── reddit_poster.py     OAuth + posting
 ├── enrichment/
 │   ├── website_scraper.py    fast HTML-based enricher
 │   └── playwright_scraper.py headless Chromium variant
-├── replies/
-│   ├── drafter.py        community reply templates
-│   ├── outreach.py       B2B cold-email templates
-│   └── reddit_poster.py  OAuth + posting
-├── niches/               7 bundled YAML packs
+├── niches/               13 bundled YAML packs
 ├── web/
 │   ├── app.py            Flask routes (AppContext for runtime niche-swap)
 │   └── templates/dashboard.html

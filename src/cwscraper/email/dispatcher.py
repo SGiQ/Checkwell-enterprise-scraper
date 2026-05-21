@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timezone
 
 from cwscraper.email.queue import ScheduledEmailQueue
+from cwscraper.email.send_limits import record_first_send_date_if_unset
 from cwscraper.email.suppression import SuppressionList
 from cwscraper.email.transport import EmailTransport, TransportError, get_transport
 
@@ -104,6 +105,9 @@ class EmailDispatcher:
                 )
                 self.queue.mark_sent(entry["id"], provider_id=result.get("provider_id", ""))
                 self._record_send_on_prospect(entry)
+                # Stamp the first-send date so the warm-up curve has a
+                # reference point. Idempotent — only writes once.
+                record_first_send_date_if_unset()
                 sent_count += 1
                 logger.info("Sent scheduled email %s to %s", entry["id"], entry["to_email"])
             except TransportError as e:
