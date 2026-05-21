@@ -54,6 +54,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       A common pattern in caregiver-burnout therapy: the client knows what they need to do, but can't actually rest because the "is mom okay today?" anxiety never turns off. The intervention they need isn't more cognitive work — it's removing that 24/7 monitoring burden.
 
       CheckWellCall provides exactly that: a daily wellness check call to the aging parent, with documented escalation to the caregiver only when something's actually wrong. Most of our caregiver-clients describe it as "the first night I slept through in a year."
@@ -69,6 +71,8 @@ outreach_templates:
     subject: "Between-session continuity for {business_name}'s older patients"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       For older patients who live alone, weekly therapy is sometimes the only structured conversation they have all week. The other six days are where isolation, missed meds, and quiet decline can go unnoticed.
 

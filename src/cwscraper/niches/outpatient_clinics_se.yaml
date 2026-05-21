@@ -52,6 +52,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       The week after an outpatient procedure is where older patients tend to slip: skipped post-op meds, under-reported pain or infection signs, falls during recovery, missed first follow-up because they forgot or didn't have transportation. {business_name}'s pre-/post-op call is one touchpoint — the in-between days are the gap.
 
       CheckWellCall does daily wellness check calls during recovery windows. We escalate immediately to your patient-relations team (or family) when something doesn't fit the expected recovery pattern. Clients describe it as "what concierge medicine charges $5k for, at a price our patients' families can actually budget."
@@ -67,6 +69,8 @@ outreach_templates:
     subject: "Reducing avoidable readmissions for {business_name}"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       Most avoidable post-procedure readmissions for elderly outpatients come from the same handful of misses in the first week home: meds skipped, complications under-reported, recovery instructions that didn't actually land.
 

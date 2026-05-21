@@ -55,6 +55,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       A lot of {business_name}'s inquiries probably come from families who first try to keep mom or dad at home before considering a move to {city} senior living. CheckWellCall fills the gap during that "still at home but we're worried" phase with daily wellness check calls.
 
       Two reasons this matters for {business_name}: • Families who use us and eventually need more care often move their loved one to a partner facility — happy to refer to you • For your residents whose adult children live out of state, weekly check-in calls to those families builds the kind of trust that grows referrals
@@ -80,6 +82,8 @@ outreach_templates:
     subject: "Sending {city} families your way"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       We work with families in {city}, {state} who eventually realize keeping their parent at home isn't sustainable. When that happens we like to refer to vetted local ALFs.
 

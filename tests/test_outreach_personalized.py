@@ -70,14 +70,16 @@ def test_draft_outreach_with_personalizer_fills_opener(pace_niche, business):
 
 
 def test_draft_outreach_skips_personalizer_when_template_unused(pace_niche, business):
-    """The post_disenrollment template doesn't use {personalized_opener}.
-    Even with a personalizer passed, no API call should happen — saves cost."""
+    """Follow-up templates intentionally don't use {personalized_opener} —
+    they're meant to be terse refreshers, not new personalized intros.
+    Even with a personalizer passed, no API call should happen for these
+    templates — saves cost and avoids opener fatigue in the conversation."""
     p = _mock_personalizer("Should not be used.")
     p.client.messages.create.reset_mock()  # fresh count
 
     draft = draft_outreach(
         business, pace_niche,
-        template_key="post_disenrollment",
+        template_key="follow_up",
         personalizer=p,
     )
     assert draft["personalized_opener"] == ""

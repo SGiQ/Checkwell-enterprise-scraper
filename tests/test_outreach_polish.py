@@ -106,6 +106,44 @@ def test_pace_template_body_has_no_mid_sentence_line_breaks(pace_niche):
             )
 
 
+def test_all_non_followup_templates_use_personalized_opener():
+    """Every non-follow-up template in every directory-mode niche should
+    have a {personalized_opener} slot, surrounded by blank lines so the
+    AI-generated opener renders naturally between the greeting and the
+    first body paragraph. Follow-up templates intentionally don't have
+    the slot — they're meant to be terse refreshers."""
+    TOKEN = "{personalized_opener}"
+    missing = []
+    for spec in list_bundled_niches():
+        if spec.get("mode") != "directory":
+            continue
+        niche = load_niche(spec["slug"])
+        for tmpl in niche.outreach_templates:
+            if tmpl.key.endswith("follow_up"):
+                # Intentionally not personalized — verify the slot is absent
+                assert TOKEN not in (tmpl.body or ""), (
+                    f"{spec['slug']}/{tmpl.key} is a follow-up but has the "
+                    f"opener slot — should be terse, no personalization"
+                )
+                continue
+            body = tmpl.body or ""
+            if TOKEN not in body:
+                missing.append(f"{spec['slug']}/{tmpl.key}")
+                continue
+            # Verify it's positioned correctly — blank line on each side
+            i = body.find(TOKEN)
+            assert body[i-2:i] == "\n\n", (
+                f"{spec['slug']}/{tmpl.key}: opener should follow a blank line, "
+                f"got: {body[max(0,i-6):i+len(TOKEN)+10]!r}"
+            )
+            after = body[i+len(TOKEN):i+len(TOKEN)+2]
+            assert after == "\n\n", (
+                f"{spec['slug']}/{tmpl.key}: opener should be followed by a blank line, "
+                f"got: {body[i:i+len(TOKEN)+10]!r}"
+            )
+    assert not missing, f"templates missing {{personalized_opener}}: {missing}"
+
+
 def test_all_directory_niche_bodies_have_unwrapped_paragraphs():
     """Every directory-mode niche template body should have its
     paragraphs unwrapped to single lines (no hard mid-sentence line

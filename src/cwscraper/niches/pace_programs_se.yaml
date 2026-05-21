@@ -73,6 +73,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       When a participant leaves PACE — voluntarily, geographically, or because their needs changed — there's usually no formal step-down support. They go from comprehensive coordinated care to "you're on your own" overnight.
 
       CheckWellCall offers a soft landing: daily wellness check calls that catch the changes (missed meds, isolation, cognitive shifts) that often follow disenrollment. Family-facing reports go to the adult children; escalations come back to whoever's coordinating next-step care.

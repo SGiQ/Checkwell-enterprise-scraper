@@ -59,6 +59,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       You probably have several clients in {city} whose adult children live out of state and ask you variations of "is mom really OK between visits?" CheckWellCall is built for exactly that question: daily wellness check calls, with documented escalation to the care manager or family when something's off.
 
       A few ways we work with care managers: • White-label option: calls go out under your firm's name with our team handling the actual call workflow • Direct referral: we pay a referral fee on signups you send • Co-branded family-facing dashboard so families see the wellness report alongside your care plan updates
@@ -84,6 +86,8 @@ outreach_templates:
     subject: "White-label daily wellness checks for {business_name}'s clients"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       Quick one: would a white-labeled daily wellness check service strengthen what {business_name} offers your families? We do the call workflow, you keep the client relationship and brand. Pricing is designed to give you margin on every account.
 

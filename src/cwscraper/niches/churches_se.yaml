@@ -55,6 +55,8 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
+      {personalized_opener}
+
       Many congregations have a small group of older or homebound members who slip through the cracks between deacon visits, Sunday services, and the formal pastoral-care rotation. CheckWellCall does daily wellness check calls — a kind, scripted check-in — that flags any day someone doesn't pick up or sounds concerning, then escalates to family or your member-care team.
 
       A few ways {business_name} could use us: • Add a wellness-check ministry without adding volunteer hours • Catch isolation, depression, and missed medications early • Give peace of mind to adult children of your members who live out of state
@@ -76,6 +78,8 @@ outreach_templates:
     subject: "{city} families looking for senior-care guidance"
     body: |
       Hi {contact_name},
+
+      {personalized_opener}
 
       We work with families across {city} caring for aging parents, and a meaningful number of them ask us about local faith communities — especially for the spiritual-care side of eldercare that we can't provide ourselves.
 
