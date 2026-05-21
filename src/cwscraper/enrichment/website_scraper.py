@@ -388,7 +388,44 @@ def _strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", no_tags)
 
 
+# Words that — when they appear in extracted "contact name" candidates —
+# almost always indicate a UI widget label, button text, cookie/privacy
+# banner, or other non-person string scraped from a contact page.
+# False positive cost: a real name like "Skip Johnson" gets filtered out and
+# we fall back to "Hi there," in the email. Acceptable price to never send
+# "Hi Accessibility Tools Accessibility," to a real prospect.
+_NAME_JUNK_WORDS: frozenset[str] = frozenset({
+    # Accessibility-overlay widgets (the bug that prompted this filter)
+    "accessibility", "accessible", "wcag",
+    # Cookie / privacy / consent banners
+    "cookie", "cookies", "privacy", "policy", "consent", "gdpr", "ccpa",
+    "preferences", "settings",
+    # Site navigation / skip links
+    "skip", "menu", "navigation", "main", "content", "header", "footer",
+    "sidebar", "toggle",
+    # Generic calls-to-action / button text
+    "subscribe", "newsletter", "sign", "signup", "register", "login",
+    "logout", "download", "click", "learn", "more", "read", "submit",
+    "next", "previous", "back",
+    # Site sections / pages
+    "home", "page", "search", "products", "services", "categories",
+    "blog", "news", "events",
+    # Marketing / legal boilerplate
+    "terms", "service", "legal", "disclaimer", "copyright", "all", "rights",
+    "reserved",
+    # Common contact-page widget labels (not person names)
+    "tools", "widget", "button", "form", "field",
+})
+
+
 def _looks_like_name(text: str) -> bool:
+    """Heuristic: does this string plausibly look like a contact's name?
+
+    Returns False for widget labels (Accessibility Tools), navigation
+    elements (Skip Content, Read More), CTAs (Subscribe Now), and other
+    junk strings that share the multi-word-title-case shape with real
+    names but aren't.
+    """
     if not text or len(text) > 60:
         return False
     if "@" in text or "/" in text:
@@ -396,7 +433,18 @@ def _looks_like_name(text: str) -> bool:
     parts = text.split()
     if not (2 <= len(parts) <= 4):
         return False
-    return all(p[:1].isupper() for p in parts if p)
+    if not all(p[:1].isupper() for p in parts if p):
+        return False
+    # Reject if any word looks like UI / boilerplate text
+    lower_words = [p.lower() for p in parts]
+    if any(w in _NAME_JUNK_WORDS for w in lower_words):
+        return False
+    # Reject if any word repeats — real names don't have "Smith Smith"
+    # (catches the original "Accessibility Tools Accessibility" pattern
+    # even if the denylist somehow misses it)
+    if len(set(lower_words)) != len(lower_words):
+        return False
+    return True
 
 
 def _is_junk(email: str, business: dict) -> bool:
