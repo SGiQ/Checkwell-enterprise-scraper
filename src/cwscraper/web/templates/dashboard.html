@@ -381,6 +381,22 @@
                 </div>
             </div>
 
+            <!-- AI-drafted second-touch replies awaiting operator review.
+                 Auto-populated by the inbound poller when a recipient's reply
+                 is classified as 'interested'. Each card has Approve / Edit /
+                 Dismiss actions. Hidden when there are no pending drafts. -->
+            <div class="panel" id="inboundDraftsPanel" style="margin-bottom:20px;border-left:3px solid #22c55e;display:none">
+                <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h3 style="display:flex;align-items:center;gap:10px;margin:0">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>
+                        AI-Drafted Replies (awaiting your review)
+                        <span id="inboundDraftsCount" style="background:#22c55e;color:#0f172a;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px"></span>
+                    </h3>
+                    <button onclick="loadInboundDrafts()" style="background:#0ea5e9;color:#fff;border:0;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Refresh</button>
+                </div>
+                <div class="panel-body" id="inboundDraftsList" style="padding:12px 16px"></div>
+            </div>
+
             <!-- Reddit Auth Banner -->
             <div class="reddit-auth-box" id="authBox">
                 <div class="auth-info" id="authInfo">Checking Reddit connection...</div>
@@ -2182,6 +2198,9 @@
         let redditConnected = false;
 
         async function loadRepliesTab() {
+            // Load AI-drafted second-touch replies first — they're at the top
+            // of the tab and the operator is most likely to act on them.
+            await loadInboundDrafts();
             await checkRedditAuth();
             await loadReplies();
             await loadDraftableLeads();
@@ -2886,6 +2905,111 @@
                 `;
             } catch (e) {
                 panel.innerHTML = `<div style="color:#fca5a5;font-size:12px">Failed to load send limits: ${e.message}</div>`;
+            }
+        }
+
+        // =====================================================================
+        // Inbound auto-drafted reply review (Replies tab)
+        // =====================================================================
+
+        async function loadInboundDrafts() {
+            const panel = document.getElementById('inboundDraftsPanel');
+            const list = document.getElementById('inboundDraftsList');
+            const counter = document.getElementById('inboundDraftsCount');
+            if (!panel || !list) return;
+
+            try {
+                const r = await fetch('/api/replies/inbound-drafts?status=pending');
+                const data = await r.json();
+                const drafts = data.drafts || [];
+                if (drafts.length === 0) {
+                    panel.style.display = 'none';
+                    return;
+                }
+                panel.style.display = 'block';
+                counter.textContent = drafts.length;
+                list.innerHTML = drafts.map(d => _renderInboundDraftCard(d)).join('');
+            } catch (e) {
+                console.error('loadInboundDrafts failed:', e);
+            }
+        }
+
+        function _renderInboundDraftCard(d) {
+            const errBanner = d.ai_error
+                ? `<div style="background:#7c2d12;color:#fde68a;padding:6px 10px;border-radius:4px;font-size:11px;margin-bottom:10px">⚠ AI fallback used: ${_escapeHtml(d.ai_error)}</div>`
+                : '';
+            const replyExcerpt = d.original_reply_excerpt
+                ? `<details style="margin:8px 0;font-size:11px"><summary style="cursor:pointer;color:#94a3b8">What they said</summary><div style="background:#0f172a;border-left:2px solid #475569;padding:8px;margin-top:6px;color:#cbd5e1;white-space:pre-wrap">${_escapeHtml(d.original_reply_excerpt)}</div></details>`
+                : '';
+            return `<div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:14px;margin-bottom:12px" data-draft-id="${d.id}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                    <div>
+                        <div style="font-weight:600;color:#e2e8f0">${_escapeHtml(d.business_name)}</div>
+                        <div style="font-size:11px;color:#94a3b8">→ ${_escapeHtml(d.to_email)}</div>
+                    </div>
+                    <div style="font-size:10px;color:#64748b">${new Date(d.created_at).toLocaleString()}</div>
+                </div>
+                ${errBanner}
+                ${replyExcerpt}
+                <input type="text" id="draftSubject-${d.id}" value="${_escapeHtml(d.subject)}"
+                    style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:4px;padding:6px 10px;color:#e2e8f0;font-size:12px;margin-bottom:6px">
+                <textarea id="draftBody-${d.id}" rows="8"
+                    style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:4px;padding:8px 10px;color:#e2e8f0;font-size:12px;font-family:inherit;resize:vertical">${_escapeHtml(d.body)}</textarea>
+                <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+                    <button onclick="dismissInboundDraft('${d.id}')" style="background:#475569;color:#e2e8f0;border:0;padding:7px 14px;border-radius:4px;cursor:pointer;font-size:11px">Dismiss</button>
+                    <button onclick="approveInboundDraft('${d.id}')" style="background:#22c55e;color:#0f172a;border:0;padding:7px 18px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">✓ Approve &amp; queue send</button>
+                </div>
+            </div>`;
+        }
+
+        function _escapeHtml(s) {
+            if (!s) return '';
+            return String(s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        async function approveInboundDraft(draftId) {
+            // First save any edits the operator made
+            const subject = document.getElementById(`draftSubject-${draftId}`)?.value;
+            const body = document.getElementById(`draftBody-${draftId}`)?.value;
+            try {
+                await fetch(`/api/replies/inbound-drafts/${draftId}/edit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subject, body }),
+                });
+                const r = await fetch(`/api/replies/inbound-drafts/${draftId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await r.json();
+                if (data.ok) {
+                    showToast(`Queued — sending at ${new Date(data.scheduled_for).toLocaleTimeString()}`);
+                    loadInboundDrafts();
+                } else {
+                    showToast('Approve failed: ' + (data.error || 'unknown'), true);
+                }
+            } catch (e) {
+                showToast('Network error: ' + e.message, true);
+            }
+        }
+
+        async function dismissInboundDraft(draftId) {
+            if (!confirm('Discard this draft without sending? This is not reversible.')) return;
+            try {
+                const r = await fetch(`/api/replies/inbound-drafts/${draftId}/dismiss`, {
+                    method: 'POST',
+                });
+                const data = await r.json();
+                if (data.ok) {
+                    showToast('Draft dismissed.');
+                    loadInboundDrafts();
+                } else {
+                    showToast('Dismiss failed: ' + (data.error || 'unknown'), true);
+                }
+            } catch (e) {
+                showToast('Network error: ' + e.message, true);
             }
         }
 
