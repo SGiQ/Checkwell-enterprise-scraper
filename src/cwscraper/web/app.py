@@ -20,15 +20,18 @@ from cwscraper.core.niche import category_to_niche_map, list_bundled_niches, loa
 from cwscraper.core.preflight import evaluate as evaluate_preflight
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
+from cwscraper.email.bulk import bulk_draft_and_queue
 from cwscraper.email.dispatcher import EmailDispatcher
 from cwscraper.email.inbound import (
     InboundEmailPoller,
     inbound_settings_summary,
 )
 from cwscraper.email.queue import ScheduledEmailQueue
+from cwscraper.email.send_limits import settings_summary as send_limits_summary
 from cwscraper.email.suppression import SuppressionList
 from cwscraper.email.transport import get_transport
 from cwscraper.replies import RedditOAuth, draft_outreach, draft_reply, post_reddit_comment
+from cwscraper.replies.personalizer import Personalizer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +59,12 @@ class AppContext:
         self.suppression = SuppressionList(self.repo.dir)
         self.email_dispatcher = EmailDispatcher(
             self.email_queue, self.repo, suppression=self.suppression,
+        )
+        # AI personalizer — uses ANTHROPIC_API_KEY; falls back gracefully
+        # when unset (returns a regional generic opener instead of failing).
+        # Local JSON cache means re-drafting the same business doesn't re-bill.
+        self.personalizer = Personalizer(
+            cache_file=self.repo.dir / "personalizations.json",
         )
         # Inbound reply polling — dormant unless IMAP_ENABLED=true
         self.inbound_poller = InboundEmailPoller(self.repo, self.suppression)
@@ -1126,6 +1135,79 @@ def create_app() -> Flask:
     def api_reddit_disconnect():
         reddit_oauth.disconnect()
         return jsonify({"ok": True})
+
+    # ----------------------- bulk personalized outreach ---------------------
+    # Operator picks N businesses + a template, hits "Draft + queue".
+    # We loop, run each through the AI personalizer (when the template uses
+    # {personalized_opener}), draft the email, enforce suppression + daily
+    # cap + per-domain cap, and enqueue with staggered scheduled_for times.
+    # Dashboard UI for this lives in a follow-up PR — invoke via API for now.
+
+    @app.route("/api/outreach/bulk-draft", methods=["POST"])
+    def api_outreach_bulk_draft():
+        payload = request.get_json(silent=True) or {}
+        business_ids = payload.get("business_ids") or []
+        if not isinstance(business_ids, list) or not business_ids:
+            return jsonify({"ok": False, "error": "business_ids[] required"}), 400
+
+        template_key = payload.get("template_key") or None
+        cadence_seconds = int(payload.get("cadence_seconds") or 180)
+
+        start_at = None
+        if payload.get("start_at"):
+            try:
+                raw = payload["start_at"]
+                parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                start_at = parsed
+            except (ValueError, AttributeError):
+                return jsonify({
+                    "ok": False,
+                    "error": f"Invalid start_at: {payload.get('start_at')!r}",
+                }), 400
+
+        try:
+            summary = bulk_draft_and_queue(
+                business_ids=business_ids,
+                repo=ctx.repo,
+                queue=ctx.email_queue,
+                suppression=ctx.suppression,
+                niche=ctx.niche,
+                personalizer=ctx.personalizer,
+                template_key=template_key,
+                start_at=start_at,
+                cadence_seconds=cadence_seconds,
+                from_email=(payload.get("from_email") or "").strip(),
+                from_name=(payload.get("from_name") or "").strip(),
+                reply_to=(payload.get("reply_to") or "").strip(),
+            )
+        except Exception as e:
+            logger.exception("bulk_draft_and_queue failed")
+            return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify(summary)
+
+    @app.route("/api/outreach/personalizer/status")
+    def api_personalizer_status():
+        """Is the AI personalizer ready? Used by the dashboard to gate the
+        bulk button + show the model in use."""
+        return jsonify({
+            "configured": ctx.personalizer.configured,
+            "model": ctx.personalizer.model,
+            "cache_size": len(ctx.personalizer._cache),
+        })
+
+    # ----------------------- send-volume limits -----------------------------
+
+    @app.route("/api/emails/send-limits")
+    def api_send_limits():
+        """Current daily cap, per-domain cap, warm-up status, today's usage."""
+        from cwscraper.email.send_limits import todays_counts
+        summary = send_limits_summary()
+        counts = todays_counts(ctx.email_queue)
+        summary["today_total"] = counts["total"]
+        summary["today_by_domain"] = counts["by_domain"]
+        return jsonify(summary)
 
     # ----------------------- inbound replies --------------------------------
     # Background poller drives this; the routes below are for the dashboard
