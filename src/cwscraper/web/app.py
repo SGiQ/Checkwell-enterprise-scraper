@@ -21,7 +21,12 @@ from cwscraper.core.preflight import evaluate as evaluate_preflight
 from cwscraper.core.scheduler import AutoScanner
 from cwscraper.core.store import JSONRepository
 from cwscraper.email.dispatcher import EmailDispatcher
+from cwscraper.email.inbound import (
+    InboundEmailPoller,
+    inbound_settings_summary,
+)
 from cwscraper.email.queue import ScheduledEmailQueue
+from cwscraper.email.suppression import SuppressionList
 from cwscraper.email.transport import get_transport
 from cwscraper.replies import RedditOAuth, draft_outreach, draft_reply, post_reddit_comment
 
@@ -46,9 +51,14 @@ class AppContext:
         self.niche = None
         self.engine = None
         self.scheduler: AutoScanner | None = None
-        # Email scheduling — queue + background dispatcher
+        # Email scheduling — queue + background dispatcher + suppression list
         self.email_queue = ScheduledEmailQueue(self.repo.dir)
-        self.email_dispatcher = EmailDispatcher(self.email_queue, self.repo)
+        self.suppression = SuppressionList(self.repo.dir)
+        self.email_dispatcher = EmailDispatcher(
+            self.email_queue, self.repo, suppression=self.suppression,
+        )
+        # Inbound reply polling — dormant unless IMAP_ENABLED=true
+        self.inbound_poller = InboundEmailPoller(self.repo, self.suppression)
         self._lock = threading.Lock()
 
     def boot(self) -> None:
@@ -63,6 +73,9 @@ class AppContext:
         # Background email dispatcher — safe to always start; tick() no-ops
         # when the queue is empty or the transport isn't configured.
         self.email_dispatcher.start()
+        # Inbound poller — same safety: ticks no-op when IMAP_ENABLED is false
+        # or creds aren't set.
+        self.inbound_poller.start()
 
     def swap_niche(self, slug: str) -> dict:
         """Switch to a different niche pack. Persists the choice."""
@@ -1110,6 +1123,96 @@ def create_app() -> Flask:
     def api_reddit_disconnect():
         reddit_oauth.disconnect()
         return jsonify({"ok": True})
+
+    # ----------------------- inbound replies --------------------------------
+    # Background poller drives this; the routes below are for the dashboard
+    # ops panel (status, manual poll, force-recheck).
+
+    @app.route("/api/emails/inbound/status")
+    def api_inbound_status():
+        return jsonify(inbound_settings_summary())
+
+    @app.route("/api/emails/inbound/poll-now", methods=["POST"])
+    def api_inbound_poll_now():
+        """Synchronous manual poll. Useful for first-time wiring + debugging."""
+        return jsonify(ctx.inbound_poller.tick())
+
+    # ----------------------- suppression list -------------------------------
+    # Backs the unsubscribe flow + the operator-facing do-not-contact panel.
+
+    @app.route("/api/suppression")
+    def api_suppression_list():
+        try:
+            limit = min(int(request.args.get("limit", 500)), 5000)
+        except ValueError:
+            limit = 500
+        return jsonify({
+            "ok": True,
+            "items": ctx.suppression.list_all(limit=limit),
+        })
+
+    @app.route("/api/suppression", methods=["POST"])
+    def api_suppression_add():
+        payload = request.get_json(silent=True) or {}
+        email_addr = (payload.get("email") or "").strip()
+        reason = (payload.get("reason") or "manual").strip()
+        notes = (payload.get("notes") or "").strip()
+        entry = ctx.suppression.add(email_addr, reason=reason, notes=notes, added_by="dashboard")
+        if entry is None:
+            return jsonify({"ok": False, "error": "invalid email"}), 400
+        return jsonify({"ok": True, "entry": entry})
+
+    @app.route("/api/suppression/<path:email_addr>", methods=["DELETE"])
+    def api_suppression_remove(email_addr):
+        removed = ctx.suppression.remove(email_addr)
+        return jsonify({"ok": removed})
+
+    # ----------------------- public unsubscribe -----------------------------
+    # Backs the List-Unsubscribe header + the link in the email footer.
+    # We never reveal whether a given address was on our list, so the
+    # response is the same for unknown addresses.
+
+    def _do_unsubscribe(addr: str, source: str) -> bool:
+        target = (addr or "").strip().lower()
+        if not target or "@" not in target:
+            return False
+        ctx.suppression.add(
+            target, reason="unsubscribe",
+            notes=f"via public link ({source})",
+            added_by="unsubscribe-link",
+        )
+        # If this address matches a known business prospect, mark it lost.
+        for p in repo.get_all_prospects():
+            if p.get("lead_type") != "business":
+                continue
+            emails = [(p.get("email") or "").strip().lower()]
+            for c in p.get("contacts") or []:
+                emails.append((c.get("email") or "").strip().lower())
+            if target in emails:
+                repo.update_prospect(
+                    p["id"], "business",
+                    {"pipeline_stage": "lost"},
+                    action="unsubscribed_via_link",
+                )
+        return True
+
+    @app.route("/unsubscribe", methods=["GET"])
+    def unsubscribe_get():
+        addr = request.args.get("email", "")
+        accepted = _do_unsubscribe(addr, source="GET")
+        return render_template("unsubscribe.html", email=addr, accepted=accepted), 200
+
+    @app.route("/unsubscribe", methods=["POST"])
+    def unsubscribe_one_click():
+        """RFC 8058 one-click — mail clients (Gmail, Outlook) POST here."""
+        payload = request.get_json(silent=True) or {}
+        addr = (
+            request.form.get("email")
+            or request.args.get("email")
+            or payload.get("email", "")
+        )
+        _do_unsubscribe(addr, source="one-click")
+        return jsonify({"ok": True}), 200
 
     return app
 

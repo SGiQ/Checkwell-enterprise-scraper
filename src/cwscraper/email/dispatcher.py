@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timezone
 
 from cwscraper.email.queue import ScheduledEmailQueue
+from cwscraper.email.suppression import SuppressionList
 from cwscraper.email.transport import EmailTransport, TransportError, get_transport
 
 logger = logging.getLogger("cwscraper.email.dispatcher")
@@ -22,9 +23,18 @@ TICK_SECONDS = 60   # how often to check the queue
 class EmailDispatcher:
     """Polls the queue and sends due emails."""
 
-    def __init__(self, queue: ScheduledEmailQueue, repo):
+    def __init__(
+        self,
+        queue: ScheduledEmailQueue,
+        repo,
+        suppression: SuppressionList | None = None,
+    ):
         self.queue = queue
         self.repo = repo
+        # Optional: when present, every send checks here first and skips
+        # suppressed recipients. Kept optional so existing callers (older
+        # tests, partial wiring) don't have to pass it.
+        self.suppression = suppression
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -69,6 +79,20 @@ class EmailDispatcher:
 
         sent_count = 0
         for entry in due:
+            # Suppression check — never send to addresses that have unsubscribed,
+            # bounced, or been added to the do-not-contact list. We mark the
+            # queue entry failed with a clear reason so the operator can see
+            # what happened in the Pipeline > Scheduled view.
+            if self.suppression and self.suppression.is_suppressed(entry["to_email"]):
+                self.queue.mark_failed(
+                    entry["id"],
+                    f"Suppressed: {entry['to_email']} is on the do-not-contact list",
+                )
+                logger.info(
+                    "Skipped send to %s (suppressed) — queue entry %s",
+                    entry["to_email"], entry["id"],
+                )
+                continue
             try:
                 result = transport.send(
                     to_email=entry["to_email"],
