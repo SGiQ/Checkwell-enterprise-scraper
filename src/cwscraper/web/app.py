@@ -1087,7 +1087,14 @@ def create_app() -> Flask:
         )
         if not business:
             return jsonify({"error": "Business not found"}), 404
-        return jsonify(draft_outreach(business, ctx.niche, template_key))
+        # Pass the personalizer so single-business drafts get the same
+        # AI-generated opener that bulk drafts do (when the template uses
+        # {personalized_opener}). Without this, the single-draft endpoint
+        # returned the template with an empty opener slot.
+        return jsonify(draft_outreach(
+            business, ctx.niche, template_key,
+            personalizer=ctx.personalizer,
+        ))
 
     @app.route("/api/outreach/templates")
     def api_outreach_templates():

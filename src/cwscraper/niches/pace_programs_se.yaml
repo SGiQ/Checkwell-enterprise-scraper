@@ -57,59 +57,38 @@ outreach_templates:
 
       {personalized_opener}
 
-      You probably get several calls a month from {city} families who'd
-      benefit from PACE but don't qualify — income above the bracket,
-      not nursing-home-level need yet, or outside {business_name}'s
-      service area. Today the answer to those families is usually
-      "here are some resources" and then they're on their own.
+      You probably get several calls a month from {city} families who'd benefit from PACE but don't qualify — income above the bracket, not nursing-home-level need yet, or outside {business_name}'s service area. Today the answer to those families is usually "here are some resources" and then they're on their own.
 
-      CheckWellCall is the daily wellness check call for that gap —
-      seniors who live alone, need a touchpoint, but aren't ready for
-      enrollment in a comprehensive program. We'd love to be on
-      {business_name}'s short list when those calls come in.
+      CheckWellCall is the daily wellness check call for that gap — seniors who live alone, need a touchpoint, but aren't ready for enrollment in a comprehensive program. We'd love to be on {business_name}'s short list when those calls come in.
 
-      A few PACE programs in the SE offer us as an outbound referral
-      to non-qualifying families. Worth a 15-minute call to see if a
-      similar arrangement could work for {business_name}?
+      A few PACE programs in the SE offer us as an outbound referral to non-qualifying families. Worth a 15-minute call to see if a similar arrangement could work for {business_name}?
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: post_disenrollment
     name: Cold Email — Post-Disenrollment Support
     subject: "Step-down support for {business_name}'s disenrolling participants"
     body: |
       Hi {contact_name},
 
-      When a participant leaves PACE — voluntarily, geographically, or
-      because their needs changed — there's usually no formal step-down
-      support. They go from comprehensive coordinated care to "you're
-      on your own" overnight.
+      When a participant leaves PACE — voluntarily, geographically, or because their needs changed — there's usually no formal step-down support. They go from comprehensive coordinated care to "you're on your own" overnight.
 
-      CheckWellCall offers a soft landing: daily wellness check calls
-      that catch the changes (missed meds, isolation, cognitive shifts)
-      that often follow disenrollment. Family-facing reports go to the
-      adult children; escalations come back to whoever's coordinating
-      next-step care.
+      CheckWellCall offers a soft landing: daily wellness check calls that catch the changes (missed meds, isolation, cognitive shifts) that often follow disenrollment. Family-facing reports go to the adult children; escalations come back to whoever's coordinating next-step care.
 
-      Open to a brief conversation about whether this could fit
-      {business_name}'s disenrollment workflow?
+      Open to a brief conversation about whether this could fit {business_name}'s disenrollment workflow?
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — referral partnership"
     body: |
       Hi {contact_name},
 
-      Following up on the note about a referral partnership for
-      {business_name}'s non-qualifying families. Happy to send a brief
-      overview document if a call doesn't fit right now.
+      Following up on the note about a referral partnership for {business_name}'s non-qualifying families. Happy to send a brief overview document if a call doesn't fit right now.
 
       Best,
       Shaun

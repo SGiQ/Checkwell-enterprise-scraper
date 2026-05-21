@@ -56,59 +56,38 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      The first 90 days post-discharge are where many older patients
-      relapse — isolation, missed medication routines, the loss of the
-      structure they had during treatment. {business_name}'s clinical
-      team can't be on the phone with every patient daily, but the
-      check-in cadence is what works.
+      The first 90 days post-discharge are where many older patients relapse — isolation, missed medication routines, the loss of the structure they had during treatment. {business_name}'s clinical team can't be on the phone with every patient daily, but the check-in cadence is what works.
 
-      CheckWellCall provides exactly that: daily wellness check calls
-      to elderly clients post-discharge, with documented escalation
-      back to {business_name}'s alumni coordinator or the patient's
-      family when something seems off — missed calls, behavioral
-      changes, signs the support system at home is fraying.
+      CheckWellCall provides exactly that: daily wellness check calls to elderly clients post-discharge, with documented escalation back to {business_name}'s alumni coordinator or the patient's family when something seems off — missed calls, behavioral changes, signs the support system at home is fraying.
 
-      A few rehab centers in {city} use us as a paid add-on for
-      families of elderly patients moving home. Worth a brief call to
-      see if it could extend {business_name}'s aftercare program?
+      A few rehab centers in {city} use us as a paid add-on for families of elderly patients moving home. Worth a brief call to see if it could extend {business_name}'s aftercare program?
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: caregiver_referral
     name: Cold Email — Caregiver-of-Client Support
     subject: "Support for adult children of {business_name}'s elderly clients"
     body: |
       Hi {contact_name},
 
-      Adult children of older patients in recovery often face two
-      problems at once: their parent is back home and stable but still
-      fragile, and they themselves are running on empty from the
-      treatment process.
+      Adult children of older patients in recovery often face two problems at once: their parent is back home and stable but still fragile, and they themselves are running on empty from the treatment process.
 
-      CheckWellCall is the daily wellness call that lets the family
-      step back without stepping away. We work with several rehab
-      programs in {city} to offer this as a soft referral for
-      families of discharged elderly clients.
+      CheckWellCall is the daily wellness call that lets the family step back without stepping away. We work with several rehab programs in {city} to offer this as a soft referral for families of discharged elderly clients.
 
-      Would a quick conversation about how this might fit {business_name}'s
-      family-support workflow be useful?
+      Would a quick conversation about how this might fit {business_name}'s family-support workflow be useful?
 
       Best,
       Shaun
       SGiQ Business Strategies | CheckWellCall
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — post-discharge wellness checks"
     body: |
       Hi {contact_name},
 
-      Following up on the note about post-discharge wellness check
-      support for {business_name}'s elderly clients. Happy to send a
-      brief overview if a call doesn't fit right now.
+      Following up on the note about post-discharge wellness check support for {business_name}'s elderly clients. Happy to send a brief overview if a call doesn't fit right now.
 
       Best,
       Shaun

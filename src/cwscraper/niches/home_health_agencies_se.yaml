@@ -50,16 +50,9 @@ outreach_templates:
     body: |
       Hi {contact_name},
 
-      Home health visits are scheduled — but the days in between are where
-      a lot of slow declines hide. CheckWellCall does daily wellness check
-      calls that catch things between your clinicians' visits: confusion,
-      withdrawal, missed meals, signs a fall happened off the record.
+      Home health visits are scheduled — but the days in between are where a lot of slow declines hide. CheckWellCall does daily wellness check calls that catch things between your clinicians' visits: confusion, withdrawal, missed meals, signs a fall happened off the record.
 
-      A few {city} home health agencies use us as:
-        • An early-warning layer between scheduled visits
-        • A family-facing "we're still watching them" touch the agency owns
-        • A retention play for clients whose families were considering
-          stepping down service
+      A few {city} home health agencies use us as: • An early-warning layer between scheduled visits • A family-facing "we're still watching them" touch the agency owns • A retention play for clients whose families were considering stepping down service
 
       Worth a 15-minute call to see if there's a fit for {business_name}?
 
@@ -67,33 +60,25 @@ outreach_templates:
       Shaun
       SGiQ Business Strategies | CheckWellCall
       1-877-343-1891 | checkwellcall.com
-
   - key: follow_up
     name: Cold Email — Follow-up
     subject: "Following up — between-visit wellness checks"
     body: |
       Hi {contact_name},
 
-      Circling back on the note about wellness checks for {business_name}'s
-      home-health clients. No pressure — happy to send a one-pager if a call
-      isn't useful right now.
+      Circling back on the note about wellness checks for {business_name}'s home-health clients. No pressure — happy to send a one-pager if a call isn't useful right now.
 
       Best,
       Shaun
-
   - key: referral_partner
     name: Cold Email — Referral Partner
     subject: "{city} clients who need more than a wellness check call"
     body: |
       Hi {contact_name},
 
-      We do daily wellness checks for adult children of aging parents in
-      {city}, {state}. Some of our calls escalate to "this client needs
-      home-health visits now" — and right now we don't have a great
-      referral list in {city}.
+      We do daily wellness checks for adult children of aging parents in {city}, {state}. Some of our calls escalate to "this client needs home-health visits now" — and right now we don't have a great referral list in {city}.
 
-      Could {business_name} be on it? Quick intro call to see if you're
-      taking new referrals?
+      Could {business_name} be on it? Quick intro call to see if you're taking new referrals?
 
       Best,
       Shaun
