@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Unsubscribed — CheckWellCall</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            max-width: 520px;
+            width: 100%;
+            padding: 40px 32px;
+            text-align: center;
+        }
+        .icon { font-size: 48px; margin-bottom: 16px; }
+        h1 { font-size: 22px; font-weight: 600; color: #e2e8f0; margin-bottom: 12px; }
+        p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 14px; }
+        .addr { color: #38bdf8; font-weight: 600; }
+        hr {
+            border: none;
+            border-top: 1px solid #334155;
+            margin: 28px 0;
+        }
+        .small { font-size: 12px; color: #64748b; }
+        a { color: #38bdf8; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="icon">✉️</div>
+
+        {% if accepted %}
+            <h1>You're unsubscribed.</h1>
+            <p>
+                {% if email %}
+                    We won't email <span class="addr">{{ email }}</span> from this outreach mailbox again.
+                {% else %}
+                    We won't email you from this outreach mailbox again.
+                {% endif %}
+            </p>
+            <p>
+                It can take a moment for in-flight messages to stop. If anything still slips through, reply with the word
+                <strong>STOP</strong> and we'll dig in by hand.
+            </p>
+        {% else %}
+            <h1>Unsubscribe request received.</h1>
+            <p>
+                If your email address was on our outreach list, it has been removed. We don't reveal
+                whether any specific address is in our system, but you won't hear from us again either way.
+            </p>
+        {% endif %}
+
+        <hr>
+
+        <p class="small">
+            This only removes you from <strong>outbound prospecting email</strong>.
+            If you're an active CheckWellCall customer, your service is unaffected.
+        </p>
+        <p class="small">
+            For anything else, contact us at
+            <a href="mailto:info@checkwellcall.com">info@checkwellcall.com</a>
+            or call <a href="tel:+18773431891">1-877-343-1891</a>.
+        </p>
+    </main>
+</body>
+</html>

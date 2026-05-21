@@ -12,10 +12,37 @@ import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from typing import Protocol
+from urllib.parse import quote, urlencode, urlparse
 
 import requests
 
 logger = logging.getLogger("cwscraper.email")
+
+
+def _unsubscribe_headers(to_email: str, from_email: str) -> dict[str, str]:
+    """Build List-Unsubscribe + List-Unsubscribe-Post headers when configured.
+
+    Returns an empty dict when CWSCRAPER_UNSUBSCRIBE_URL isn't set, so the
+    transports stay non-prescriptive (the operator can opt out of cold-outreach
+    behavior for transactional sends by simply leaving the var unset).
+    """
+    base = os.getenv("CWSCRAPER_UNSUBSCRIBE_URL", "").strip()
+    if not base:
+        return {}
+    # Append ?email=... so the public page knows who clicked.
+    sep = "&" if urlparse(base).query else "?"
+    link = f"{base}{sep}{urlencode({'email': to_email})}"
+    mailto = (
+        f"mailto:{from_email}?subject=unsubscribe"
+        if from_email else ""
+    )
+    list_unsub = f"<{link}>"
+    if mailto:
+        list_unsub += f", <{mailto}>"
+    return {
+        "List-Unsubscribe": list_unsub,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
 
 
 class TransportError(Exception):
@@ -89,6 +116,9 @@ class ResendTransport:
             payload["html"] = body_html
         if reply_to:
             payload["reply_to"] = reply_to
+        unsub_headers = _unsubscribe_headers(to_email, from_email)
+        if unsub_headers:
+            payload["headers"] = unsub_headers
 
         try:
             resp = requests.post(
@@ -190,6 +220,8 @@ class SmtpTransport:
         # Stable Message-ID derived from the from-domain helps deliverability.
         domain = from_email.split("@", 1)[1] if "@" in from_email else "localhost"
         msg["Message-ID"] = make_msgid(domain=domain)
+        for hdr_name, hdr_val in _unsubscribe_headers(to_email, from_email).items():
+            msg[hdr_name] = hdr_val
 
         msg.set_content(body_text)
         if body_html:

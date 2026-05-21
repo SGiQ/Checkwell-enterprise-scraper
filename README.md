@@ -127,6 +127,43 @@ Per-business `+ add email` button on the Businesses tab opens an inline editor f
 
 ---
 
+## Reply tracking & suppression
+
+Closes the outreach loop: instead of manually marking prospects as "replied" or "lost", a background poller fetches inbound mail, classifies it, and moves the pipeline automatically. Recipients who unsubscribe are added to a do-not-contact list and never see another send.
+
+### Inbound polling
+
+When `IMAP_ENABLED=true` and the IMAP creds are set, a thread wakes every `IMAP_POLL_MINUTES` (default 10), fetches UNSEEN messages from the mailbox, and classifies each one:
+
+| Verdict | What happens |
+| --- | --- |
+| `interested` | Matched prospect moves to `reply_received` (never downgrades a `meeting_booked` / `customer`) |
+| `not_interested` | Matched prospect moves to `lost` |
+| `unsubscribe` | Sender added to suppression list **and** matched prospect moves to `lost` |
+| `bounce` | Sender added to suppression list (envelope-detected via `mailer-daemon`, `postmaster`, etc. or a `Delivery Status Notification` subject) |
+| `out_of_office` | Activity log only — don't downgrade a real reply that may follow |
+| `unclear` | Activity log only — operator triages from the dashboard |
+
+Matching is done against `business.email` first, then any `contacts[].email`. Community-mode leads aren't tied to email and are skipped.
+
+Single-mailbox providers (Hostinger, Workspace, Outlook) usually share creds between SMTP and IMAP — leave `IMAP_USER` / `IMAP_PASSWORD` blank and they'll fall back to the SMTP creds.
+
+### Suppression list
+
+Backed by `data/suppression.json`. Every dispatcher tick checks the recipient before invoking the transport; suppressed addresses get a clear "Suppressed: …" error in the Pipeline > Scheduled view rather than a silent skip. Entries can be added by:
+
+- the public `/unsubscribe` link or RFC 8058 one-click button (Gmail / Outlook)
+- the inbound poller (on `unsubscribe` or `bounce` verdicts)
+- a manual POST to `/api/suppression` from the operator dashboard
+
+### Public `/unsubscribe`
+
+When `CWSCRAPER_UNSUBSCRIBE_URL` is set, every outbound email gets `List-Unsubscribe` + `List-Unsubscribe-Post` headers and a footer link. The route lives at `GET /unsubscribe?email=<addr>` (browser click, renders a confirmation) and `POST /unsubscribe` (RFC 8058 one-click — what Gmail/Outlook hit when the user uses the in-mail-client unsubscribe button). The response is identical for known and unknown addresses — we never reveal who is on our list.
+
+**Required for CAN-SPAM compliance** on cold outreach. Without these headers + a working unsubscribe URL, Gmail and Outlook will eventually downrank your sender domain.
+
+---
+
 ## Architecture
 
 ```
@@ -144,6 +181,12 @@ src/cwscraper/
 │   ├── youtube.py
 │   ├── hackernews.py
 │   └── google_places.py  directory-mode (Places API New)
+├── email/
+│   ├── transport.py         SMTP + Resend, with List-Unsubscribe headers
+│   ├── dispatcher.py        background sender (suppression-aware)
+│   ├── queue.py             scheduled-email queue
+│   ├── inbound.py           IMAP poller + reply classifier
+│   └── suppression.py       do-not-contact list
 ├── enrichment/
 │   ├── website_scraper.py    fast HTML-based enricher
 │   └── playwright_scraper.py headless Chromium variant
@@ -177,6 +220,10 @@ All knobs are env vars (set in `.env` locally or Railway Variables in prod):
 | `YOUTUBE_API_KEY` | Optional. Without it, YouTube scanner falls back to RSS for channels in the niche pack. |
 | `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | Required for posting replies via the dashboard. Reddit blocks anonymous `.json` access from cloud IPs (Railway, etc.) so these are effectively required for reading too if you deploy. |
 | `CWSCRAPER_REDDIT_REDIRECT_URI` | Reddit OAuth callback — must match the redirect URI in your Reddit app |
+| `IMAP_ENABLED` | `true` to start the inbound reply poller. Off by default. |
+| `IMAP_HOST` / `IMAP_PORT` / `IMAP_USER` / `IMAP_PASSWORD` | IMAP creds. User+password fall back to `SMTP_USER` / `SMTP_PASSWORD` if unset (single-mailbox providers). |
+| `IMAP_POLL_MINUTES` | How often to poll. Default 10. |
+| `CWSCRAPER_UNSUBSCRIBE_URL` | Public URL where `/unsubscribe` is reachable. Set this to enable `List-Unsubscribe` headers and CAN-SPAM-compliant outreach. |
 
 The dashboard's **pre-flight banner** introspects this list at runtime and tells you what's missing for the active niche before you click scan.
 
@@ -236,6 +283,19 @@ GET    /auth/reddit                      start OAuth flow
 GET    /auth/reddit/callback             OAuth return
 GET    /api/auth/reddit/status           connected?
 POST   /api/auth/reddit/disconnect       wipe token
+
+# Inbound replies (IMAP poller)
+GET    /api/emails/inbound/status        is the poller configured + enabled?
+POST   /api/emails/inbound/poll-now      synchronous manual poll
+
+# Suppression list (do-not-contact)
+GET    /api/suppression                  list all suppressed addresses
+POST   /api/suppression                  {email, reason?, notes?} — manual add
+DELETE /api/suppression/<email>          remove (operator override)
+
+# Public unsubscribe (CAN-SPAM)
+GET    /unsubscribe?email=<addr>         confirmation page (browser click)
+POST   /unsubscribe                      RFC 8058 one-click (Gmail/Outlook)
 ```
 
 ---
