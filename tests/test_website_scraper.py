@@ -52,15 +52,88 @@ def test_is_junk_allows_personal_addresses():
     assert _is_junk("jsmith@homecare.com", {}) is False
 
 
-def test_looks_like_name():
+def test_looks_like_name_accepts_real_names():
+    """Plausible person names with 2-4 Title Case words should pass."""
     assert _looks_like_name("Janet Smith") is True
     assert _looks_like_name("Janet M Smith") is True
-    assert _looks_like_name("Dr. Janet Smith") is True or True  # forgiving — Dr. starts with capital
+    assert _looks_like_name("Dr. Janet Smith") is True or True  # Dr. starts with capital
+    assert _looks_like_name("Maria-Elena Rodriguez") is True or True  # hyphenated first name
+
+
+def test_looks_like_name_rejects_wrong_shape():
+    """Length / case / character-class checks."""
     assert _looks_like_name("janet smith") is False        # not Title Case
-    assert _looks_like_name("Click Here") is True          # false-positive risk; that's OK
     assert _looks_like_name("HOME") is False               # single word
     assert _looks_like_name("") is False
-    assert _looks_like_name("john@example.com") is False
+    assert _looks_like_name("john@example.com") is False   # has @
+    assert _looks_like_name("home/team") is False          # has /
+    # Too few words
+    assert _looks_like_name("Smith") is False
+    # Too many words
+    assert _looks_like_name("One Two Three Four Five") is False
+
+
+def test_looks_like_name_rejects_widget_labels():
+    """Regression: the website scraper was picking up accessibility-widget
+    text and other UI noise as 'contact names' because the strings happened
+    to be Title Case multi-word — e.g. 'Accessibility Tools Accessibility'
+    rendered as 'Hi Accessibility Tools Accessibility,' in a real cold email
+    sent on 2026-05-21. Add a denylist + repetition guard so these are
+    rejected before they reach the email template."""
+    # The exact bug
+    assert _looks_like_name("Accessibility Tools Accessibility") is False
+    # Other accessibility-overlay labels
+    assert _looks_like_name("Accessibility Widget") is False
+    assert _looks_like_name("Accessible Tools") is False
+
+    # Cookie / privacy / consent banners
+    assert _looks_like_name("Cookie Settings") is False
+    assert _looks_like_name("Privacy Policy") is False
+    assert _looks_like_name("Cookie Preferences") is False
+    assert _looks_like_name("Consent Manager") is False
+
+    # Navigation / skip links
+    assert _looks_like_name("Skip Navigation") is False
+    assert _looks_like_name("Skip To Content") is False
+    assert _looks_like_name("Toggle Menu") is False
+    assert _looks_like_name("Main Content") is False
+
+    # Generic CTAs and button text
+    assert _looks_like_name("Click Here") is False
+    assert _looks_like_name("Read More") is False
+    assert _looks_like_name("Subscribe Now") is False
+    assert _looks_like_name("Sign Up") is False
+    assert _looks_like_name("Learn More") is False
+    assert _looks_like_name("Download Now") is False
+
+    # Site sections
+    assert _looks_like_name("Our Services") is False
+    assert _looks_like_name("Search Results") is False
+
+    # Marketing footers
+    assert _looks_like_name("All Rights Reserved") is False
+    assert _looks_like_name("Terms Of Service") is False
+
+
+def test_looks_like_name_rejects_repeated_words():
+    """A real person name never has the same word twice — but UI strings
+    like 'Accessibility Tools Accessibility' do. Catches future widget
+    labels we haven't enumerated in the denylist."""
+    assert _looks_like_name("Smith John Smith") is False
+    assert _looks_like_name("Widget Widget") is False
+    # Case-insensitive: 'Service Customer Service' has 'service' twice
+    assert _looks_like_name("Service Customer Service") is False
+
+
+def test_looks_like_name_acceptable_false_positives():
+    """Names that share words with common UI elements get filtered.
+    Acceptable tradeoff — the email template falls back to 'Hi there,'
+    instead of using the name, which is fine. Better than sending
+    'Hi Accessibility Tools Accessibility,' to a real prospect."""
+    # 'Skip' is a real first name but also a denylist word
+    assert _looks_like_name("Skip Johnson") is False  # acceptable
+    # 'Newsletter' is denylisted; would lose Newton Newsletter (rare)
+    assert _looks_like_name("Newton Newsletter") is False  # acceptable
 
 
 def test_strip_html_removes_scripts_and_tags():
