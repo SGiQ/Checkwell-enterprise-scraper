@@ -202,6 +202,71 @@ A dashboard UI for bulk selection (checkboxes + floating action bar + Settings p
 
 ---
 
+## Auto-drafted second-touch replies
+
+When the IMAP poller classifies an inbound reply as `interested`, the system auto-drafts a response — referencing what the recipient said and offering booking + demo links + a written-info fallback — and queues it for operator review on the Replies tab. Nothing auto-sends.
+
+### Why auto-draft, not auto-send
+
+The classifier is right ~85% of the time, not 100%. Auto-sending on a misclassification means an awkward "Thanks for your interest!" reply to someone who actually said "Please don't email me." Human review catches that. Once classifier confidence is validated under real volume in your specific niches, you can move specific verdicts to auto-send.
+
+### Flow
+
+```
+Recipient replies "interested" ────────► IMAP poller picks it up
+                                                ↓
+                              classify_reply() → 'interested'
+                                                ↓
+                          prospect.pipeline_stage → 'reply_received'
+                                                ↓
+              draft_auto_reply() — Claude Haiku 4.5 writes a response
+              referencing the recipient's specific text + offering:
+                 • Book a 15-min call:    CWSCRAPER_BOOKING_LINK
+                 • Watch a 2-min walkthrough: CWSCRAPER_DEMO_VIDEO_LINK
+                 • Or reply for a written one-pager
+                                                ↓
+                  draft enqueued on data/inbound_drafts.json
+                  (pending — NOT sent)
+                                                ↓
+                  Replies tab in the dashboard shows the draft
+                  Operator: Edit → Approve → schedules to send in 5 min
+                                       OR
+                            Operator: Dismiss → discarded
+```
+
+### Tone + length
+
+The drafter is told to:
+- Stay 80–120 words
+- Reference one specific thing the recipient said
+- Avoid canned openings ("I appreciate you reaching out", "Looking forward to")
+- Sign off as Shaun, no emoji, no exclamations
+- Output plain text — no HTML
+
+### Why one CTA → three CTAs is fine HERE but not in the cold open
+
+Cold emails should have ONE CTA — adding more dilutes reply rate. But this is a **reply** to someone who already engaged. They've earned the right to self-select: book directly, watch a video first, or ask for a written overview. Giving warm recipients choice converts; giving cold recipients choice doesn't.
+
+### Configuration
+
+```
+CWSCRAPER_BOOKING_LINK=https://cal.com/checkwellcall/15min
+CWSCRAPER_DEMO_VIDEO_LINK=https://loom.com/share/...
+```
+
+Both optional. With neither set, the drafter falls back to a simpler reply asking what would work best for the recipient — no AI call needed.
+
+### API
+
+```
+GET    /api/replies/inbound-drafts                    pending + decided drafts
+POST   /api/replies/inbound-drafts/<id>/edit          edit subject/body
+POST   /api/replies/inbound-drafts/<id>/approve       schedule via /api/emails/schedule (5min delay)
+POST   /api/replies/inbound-drafts/<id>/dismiss       discard without sending
+```
+
+---
+
 ## Reply tracking & suppression
 
 Closes the outreach loop: instead of manually marking prospects as "replied" or "lost", a background poller fetches inbound mail, classifies it, and moves the pipeline automatically. Recipients who unsubscribe are added to a do-not-contact list and never see another send.
@@ -263,11 +328,13 @@ src/cwscraper/
 │   ├── bulk.py              multi-business drafter w/ stagger + AI personalization
 │   ├── send_limits.py       daily cap, per-domain cap, warm-up curve
 │   ├── inbound.py           IMAP poller + reply classifier
+│   ├── inbound_drafts.py    queue of AI-drafted second-touch replies awaiting review
 │   └── suppression.py       do-not-contact list
 ├── replies/
 │   ├── drafter.py           community reply templates
 │   ├── outreach.py          B2B cold-email templates (now AI-opener-aware)
 │   ├── personalizer.py      Claude Haiku 4.5 per-recipient opener generator
+│   ├── auto_reply.py        Claude Haiku 4.5 second-touch reply drafter
 │   └── reddit_poster.py     OAuth + posting
 ├── enrichment/
 │   ├── website_scraper.py    fast HTML-based enricher

@@ -26,6 +26,7 @@ from cwscraper.email.inbound import (
     InboundEmailPoller,
     inbound_settings_summary,
 )
+from cwscraper.email.inbound_drafts import InboundDraftQueue
 from cwscraper.email.queue import ScheduledEmailQueue
 from cwscraper.email.send_limits import settings_summary as send_limits_summary
 from cwscraper.email.suppression import SuppressionList
@@ -66,8 +67,15 @@ class AppContext:
         self.personalizer = Personalizer(
             cache_file=self.repo.dir / "personalizations.json",
         )
+        # Queue of AI-drafted second-touch replies, awaiting operator review.
+        # The inbound poller drops drafts here when a reply is classified
+        # as 'interested'; the operator reviews + approves from the dashboard.
+        self.inbound_drafts = InboundDraftQueue(self.repo.dir)
         # Inbound reply polling — dormant unless IMAP_ENABLED=true
-        self.inbound_poller = InboundEmailPoller(self.repo, self.suppression)
+        self.inbound_poller = InboundEmailPoller(
+            self.repo, self.suppression,
+            inbound_drafts=self.inbound_drafts,
+        )
         self._lock = threading.Lock()
 
     def boot(self) -> None:
@@ -1306,6 +1314,82 @@ def create_app() -> Flask:
     def api_inbound_poll_now():
         """Synchronous manual poll. Useful for first-time wiring + debugging."""
         return jsonify(ctx.inbound_poller.tick())
+
+    # ----------------------- inbound auto-reply drafts ----------------------
+    # When the IMAP poller classifies a reply as 'interested', it auto-drafts
+    # a second-touch response (via cwscraper.replies.auto_reply) and queues
+    # it here for operator review. Operator approves (moves to scheduled-
+    # emails queue) or dismisses.
+
+    @app.route("/api/replies/inbound-drafts")
+    def api_inbound_drafts_list():
+        status = request.args.get("status")  # optional: pending|approved|dismissed
+        drafts = ctx.inbound_drafts.list(status=status)
+        return jsonify({
+            "ok": True,
+            "drafts": drafts,
+            "pending_count": sum(1 for d in drafts if d.get("status") == "pending"),
+        })
+
+    @app.route("/api/replies/inbound-drafts/<draft_id>/edit", methods=["POST"])
+    def api_inbound_draft_edit(draft_id):
+        """Operator edits the AI-drafted subject/body before approving."""
+        payload = request.get_json(silent=True) or {}
+        updated = ctx.inbound_drafts.update_body(
+            draft_id,
+            subject=payload.get("subject"),
+            body=payload.get("body"),
+        )
+        if not updated:
+            return jsonify({"ok": False, "error": "draft not found"}), 404
+        if updated.get("status") != "pending":
+            return jsonify({"ok": False, "error": "draft already decided"}), 400
+        return jsonify({"ok": True, "draft": updated})
+
+    @app.route("/api/replies/inbound-drafts/<draft_id>/approve", methods=["POST"])
+    def api_inbound_draft_approve(draft_id):
+        """Approve a draft → enqueue it for send via the existing scheduled-
+        emails queue. Default schedule: 5 minutes from now (gives the
+        operator a brief window to revoke before SMTP fires)."""
+        draft = ctx.inbound_drafts.get(draft_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "draft not found"}), 404
+        if draft.get("status") != "pending":
+            return jsonify({"ok": False, "error": "draft already decided"}), 400
+        if not (draft.get("to_email") or "").strip():
+            return jsonify({"ok": False, "error": "draft has no recipient email"}), 400
+
+        # 5 minutes from now — gives the operator a window to revoke
+        from datetime import timedelta
+        scheduled_for = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+
+        entry = ctx.email_queue.enqueue(
+            prospect_id=draft.get("business_id", ""),
+            lead_type="business",
+            to_email=draft["to_email"],
+            subject=draft["subject"],
+            body=draft["body"],
+            scheduled_for=scheduled_for,
+        )
+        ctx.inbound_drafts.mark_approved(draft_id, queue_id=entry["id"])
+        return jsonify({
+            "ok": True,
+            "queue_id": entry["id"],
+            "scheduled_for": scheduled_for,
+        })
+
+    @app.route("/api/replies/inbound-drafts/<draft_id>/dismiss", methods=["POST"])
+    def api_inbound_draft_dismiss(draft_id):
+        """Dismiss a draft without sending. The prospect's stage is
+        unchanged — they're still in reply_received, the operator just
+        decided not to use this AI-drafted response."""
+        draft = ctx.inbound_drafts.get(draft_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "draft not found"}), 404
+        if draft.get("status") != "pending":
+            return jsonify({"ok": False, "error": "draft already decided"}), 400
+        ctx.inbound_drafts.mark_dismissed(draft_id)
+        return jsonify({"ok": True})
 
     # ----------------------- suppression list -------------------------------
     # Backs the unsubscribe flow + the operator-facing do-not-contact panel.

@@ -196,9 +196,16 @@ def _imap_configured(settings: dict | None = None) -> bool:
 class InboundEmailPoller:
     """Polls the IMAP inbox for replies, classifies, updates prospects."""
 
-    def __init__(self, repo, suppression: SuppressionList):
+    def __init__(self, repo, suppression: SuppressionList,
+                 inbound_drafts=None):
         self.repo = repo
         self.suppression = suppression
+        # Optional queue for AI-drafted second-touch responses to
+        # 'interested' replies. When provided, the poller auto-drafts a
+        # reply (via cwscraper.replies.auto_reply) and queues it here for
+        # operator review. When absent, the inbound flow behaves exactly
+        # as before — classifier + stage transition only.
+        self.inbound_drafts = inbound_drafts
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         # Cache settings at construct-time; re-read on each tick so env
@@ -277,7 +284,10 @@ class InboundEmailPoller:
             prospect = self._find_prospect_by_email(from_addr)
             if prospect:
                 summary["matched"] += 1
-                self._apply_reply_to_prospect(prospect, label, from_addr, subject)
+                self._apply_reply_to_prospect(
+                    prospect, label, from_addr, subject,
+                    reply_body=text_body or html_body,
+                )
             else:
                 summary["unmatched"] += 1
                 # Still honor unsubscribes & record bounces even with no prospect link.
@@ -314,8 +324,14 @@ class InboundEmailPoller:
 
     def _apply_reply_to_prospect(
         self, prospect: dict, label: str, from_addr: str, subject: str,
+        *, reply_body: str = "",
     ) -> None:
-        """Translate classifier verdict into pipeline movement + suppression."""
+        """Translate classifier verdict into pipeline movement + suppression.
+
+        When ``label == 'interested'`` AND an :class:`InboundDraftQueue` was
+        provided at construction, also auto-drafts a second-touch response
+        and queues it for operator review (no auto-send).
+        """
         prospect_id = prospect.get("id", "")
         lead_type = prospect.get("lead_type", "business")
         current_stage = prospect.get("pipeline_stage", "new")
@@ -328,6 +344,26 @@ class InboundEmailPoller:
             # Don't downgrade meetings/customers back to reply_received.
             if current_stage in ("new", "qualified", "outreach_sent"):
                 patch["pipeline_stage"] = "reply_received"
+            # Auto-draft a second-touch reply for the operator to review.
+            # Only one pending draft per business — multiple replies from the
+            # same recipient before review consolidate into the first one.
+            if self.inbound_drafts and not self.inbound_drafts.pending_for_business(prospect_id):
+                try:
+                    from cwscraper.replies.auto_reply import draft_auto_reply
+                    draft = draft_auto_reply(
+                        business=prospect,
+                        reply_text=reply_body,
+                        reply_subject=subject,
+                    )
+                    self.inbound_drafts.enqueue(draft.to_dict())
+                    logger.info(
+                        "auto-drafted reply for business %s (ai_error=%s)",
+                        prospect_id, draft.error,
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "auto-draft failed for business %s: %s", prospect_id, e,
+                    )
         elif label in ("not_interested", "unsubscribe"):
             patch["pipeline_stage"] = "lost"
             if label == "unsubscribe":
