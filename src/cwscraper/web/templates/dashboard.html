@@ -496,12 +496,90 @@
                 <div class="panel-body">
                     <table class="lead-table" id="bizTable">
                         <thead><tr>
+                            <th style="width:32px;padding:8px 4px;text-align:center">
+                                <input type="checkbox" id="bizSelectAll" onchange="onSelectAllChange()" title="Select all visible businesses with an email"
+                                    style="cursor:pointer;width:14px;height:14px">
+                            </th>
                             <th>Business</th><th>Location</th><th>Contact</th><th>Rating</th><th>Status</th><th>Actions</th>
                         </tr></thead>
                         <tbody></tbody>
                     </table>
                     <div id="bizEmpty" style="text-align:center;padding:40px;color:#64748b;display:none">
                         No businesses yet. Run a directory scan to populate this list.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Floating action bar — appears when 1+ businesses are checked. -->
+            <div id="bulkActionBar" style="display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+                background:#1e293b;border:1px solid #38bdf8;border-radius:10px;padding:12px 18px;
+                box-shadow:0 8px 32px rgba(0,0,0,0.5);z-index:40;align-items:center;gap:14px;
+                font-size:13px;min-width:380px;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <span style="color:#e2e8f0;font-weight:600">
+                        <span id="bulkSelectedCount">0</span> selected
+                    </span>
+                    <a href="#" onclick="clearBizSelection();return false" style="color:#94a3b8;font-size:11px">clear</a>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button onclick="openBulkDraftModal()" style="background:#22c55e;color:#0f172a;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">
+                        ✉ Send personalized outreach
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bulk-draft modal -->
+            <div id="bulkDraftModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:50;align-items:center;justify-content:center;padding:20px">
+                <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:24px">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+                        <div>
+                            <h2 style="font-size:18px;font-weight:600;color:#e2e8f0;margin:0">Send personalized outreach</h2>
+                            <div style="color:#94a3b8;font-size:12px;margin-top:4px">
+                                <span id="bulkModalCount">0</span> recipients · staggered sends respect daily &amp; per-domain caps
+                            </div>
+                        </div>
+                        <button onclick="closeBulkDraftModal()" style="background:transparent;color:#94a3b8;border:0;font-size:24px;cursor:pointer;padding:0 8px">&times;</button>
+                    </div>
+
+                    <!-- AI personalizer status banner -->
+                    <div id="bulkPersonalizerStatus" style="padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:16px;display:none"></div>
+
+                    <!-- Send-limits banner -->
+                    <div id="bulkLimitsStatus" style="padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:16px;background:#0f172a;border:1px solid #334155;color:#94a3b8;display:none"></div>
+
+                    <div style="margin-bottom:14px">
+                        <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:6px">Template</label>
+                        <select id="bulkTemplate" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0"></select>
+                        <small style="display:block;color:#64748b;font-size:10px;margin-top:4px">Only templates with the <code>{personalized_opener}</code> slot get AI personalization. Follow-ups are intentionally generic.</small>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                        <div>
+                            <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:6px">Start time (UTC)</label>
+                            <input type="datetime-local" id="bulkStartAt"
+                                style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                            <small style="display:block;color:#64748b;font-size:10px;margin-top:4px">Defaults to 1 minute from now</small>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:6px">Cadence between sends</label>
+                            <select id="bulkCadence" style="width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0">
+                                <option value="60">1 minute</option>
+                                <option value="120">2 minutes</option>
+                                <option value="180" selected>3 minutes</option>
+                                <option value="300">5 minutes</option>
+                                <option value="600">10 minutes</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- In-progress + results panel -->
+                    <div id="bulkSubmitResult" style="display:none;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:12px;font-size:12px;margin-bottom:16px;max-height:240px;overflow-y:auto"></div>
+
+                    <div style="display:flex;justify-content:flex-end;gap:8px">
+                        <button onclick="closeBulkDraftModal()" style="background:#475569;color:#e2e8f0;border:0;padding:9px 16px;border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>
+                        <button id="bulkSubmitBtn" onclick="submitBulkDraft()" style="background:#22c55e;color:#0f172a;border:0;padding:9px 18px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">
+                            Queue <span id="bulkSubmitCount">0</span> emails
+                        </button>
                     </div>
                 </div>
             </div>
@@ -607,7 +685,36 @@
         <!-- Settings Tab -->
         <div id="tab-settings" class="tab-content">
             <div class="header"><h2>Settings</h2></div>
+
+            <!-- Outbound send hygiene — read-only view of the env-driven caps -->
+            <div class="panel" style="margin-bottom:14px;border-left:3px solid #22c55e">
+                <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h3 style="display:flex;align-items:center;gap:10px;margin:0">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#22c55e"></span>
+                        Outbound Email Hygiene
+                    </h3>
+                    <button onclick="loadSendLimits()" style="background:#0ea5e9;color:#fff;border:0;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px">Refresh</button>
+                </div>
+                <div class="panel-body" id="sendLimitsPanel" style="padding:14px 16px">
+                    <div style="color:#64748b;font-size:12px">Loading…</div>
+                </div>
+            </div>
+
+            <!-- AI Personalizer status -->
+            <div class="panel" style="margin-bottom:14px;border-left:3px solid #38bdf8">
+                <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h3 style="display:flex;align-items:center;gap:10px;margin:0">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8"></span>
+                        AI Personalizer
+                    </h3>
+                </div>
+                <div class="panel-body" id="personalizerStatusPanel" style="padding:14px 16px">
+                    <div style="color:#64748b;font-size:12px">Loading…</div>
+                </div>
+            </div>
+
             <div class="panel">
+                <div class="panel-header"><h3 style="margin:0">Community Scanner Settings</h3></div>
                 <div class="settings-form" id="settingsForm">
                     <div class="form-group">
                         <label>Auto-Scan</label>
@@ -704,7 +811,11 @@
                 if (item.dataset.tab === 'replies') loadRepliesTab();
                 if (item.dataset.tab === 'directory') loadDirectory();
                 if (item.dataset.tab === 'history') loadScanLogs();
-                if (item.dataset.tab === 'settings') loadConfig();
+                if (item.dataset.tab === 'settings') {
+                    loadConfig();
+                    loadSendLimits();
+                    loadPersonalizerStatus();
+                }
             });
         });
 
@@ -870,7 +981,14 @@
             const nicheChips = niches.slice(0, 2).map(n =>
                 `<span style="background:#0f172a;border:1px solid #334155;color:#94a3b8;padding:1px 5px;border-radius:3px;font-size:9px;margin-right:3px">${n}</span>`
             ).join('') + (niches.length > 2 ? `<span style="color:#64748b;font-size:9px">+${niches.length - 2}</span>` : '');
+            const hasEmail = !!b.email || (b.contacts && b.contacts.length && b.contacts[0].email);
             return `<tr id="bizrow-${b.id}">
+                <td style="text-align:center;padding:8px 4px">
+                    <input type="checkbox" class="biz-select" data-biz-id="${b.id}"
+                        ${hasEmail ? '' : 'disabled title="no email — cannot bulk-send"'}
+                        onchange="onBizSelectChange()"
+                        style="cursor:${hasEmail ? 'pointer' : 'not-allowed'};width:14px;height:14px;opacity:${hasEmail ? '1' : '0.3'}">
+                </td>
                 <td>
                     <div style="font-weight:600">${b.name || '(unnamed)'}</div>
                     <small style="color:#64748b">${b.category || ''}</small>
@@ -1043,7 +1161,15 @@
                     empty.style.display = 'block';
                 } else {
                     empty.style.display = 'none';
+                    // Cache the full list so the bulk-selection flow can look
+                    // up business details (email, name) by id without re-fetching.
+                    window._lastBusinessesList = list.businesses;
                     tbody.innerHTML = list.businesses.map(renderBusinessRow).join('');
+                    // After re-render, restore checkbox state for any business
+                    // that was previously selected.
+                    if (typeof _restoreBulkSelectionAfterRender === 'function') {
+                        _restoreBulkSelectionAfterRender();
+                    }
                 }
             } catch (e) { console.error(e); }
         }
@@ -2481,6 +2607,313 @@
             document.querySelector('[data-tab="replies"]').classList.add('active');
             document.getElementById('tab-replies').classList.add('active');
             loadRepliesTab();
+        }
+
+        // =====================================================================
+        // Bulk personalized outreach — UI for /api/outreach/bulk-draft
+        //
+        // State lives in a single Map so re-renders of the table (e.g. after a
+        // filter change) don't lose selections that scrolled off-screen.
+        // =====================================================================
+
+        const _bulkSelected = new Map();  // biz_id -> business object (cached for the modal)
+
+        function onBizSelectChange() {
+            // Recompute the full selected set from the visible DOM, but
+            // preserve any selections that were on rows currently off-screen.
+            document.querySelectorAll('.biz-select').forEach(cb => {
+                const id = cb.dataset.bizId;
+                if (cb.checked) {
+                    if (!_bulkSelected.has(id)) {
+                        // Pull the business object from the cached list
+                        const biz = (window._lastBusinessesList || []).find(b => b.id === id);
+                        if (biz) _bulkSelected.set(id, biz);
+                    }
+                } else {
+                    _bulkSelected.delete(id);
+                }
+            });
+            _updateBulkActionBar();
+        }
+
+        function onSelectAllChange() {
+            const master = document.getElementById('bizSelectAll');
+            const visible = Array.from(document.querySelectorAll('.biz-select'))
+                .filter(cb => !cb.disabled);
+            visible.forEach(cb => {
+                cb.checked = master.checked;
+            });
+            onBizSelectChange();
+        }
+
+        function clearBizSelection() {
+            _bulkSelected.clear();
+            document.querySelectorAll('.biz-select').forEach(cb => { cb.checked = false; });
+            const master = document.getElementById('bizSelectAll');
+            if (master) master.checked = false;
+            _updateBulkActionBar();
+        }
+
+        function _updateBulkActionBar() {
+            const bar = document.getElementById('bulkActionBar');
+            const n = _bulkSelected.size;
+            document.getElementById('bulkSelectedCount').textContent = n;
+            bar.style.display = n > 0 ? 'flex' : 'none';
+        }
+
+        // After loadBusinesses() re-renders the table, restore checkbox state
+        // for any IDs that are in _bulkSelected.
+        function _restoreBulkSelectionAfterRender() {
+            document.querySelectorAll('.biz-select').forEach(cb => {
+                if (_bulkSelected.has(cb.dataset.bizId)) cb.checked = true;
+            });
+            _updateBulkActionBar();
+        }
+
+        // ---------- Modal -----------------------------------------------------
+
+        async function openBulkDraftModal() {
+            if (_bulkSelected.size === 0) return;
+
+            const count = _bulkSelected.size;
+            document.getElementById('bulkModalCount').textContent = count;
+            document.getElementById('bulkSubmitCount').textContent = count;
+            document.getElementById('bulkSubmitResult').style.display = 'none';
+            document.getElementById('bulkSubmitBtn').disabled = false;
+            document.getElementById('bulkSubmitBtn').style.opacity = '1';
+
+            // Default start time = 1 min from now (rounded to the next minute,
+            // formatted as the local-zone datetime-local widget expects).
+            const t = new Date(Date.now() + 60_000);
+            t.setSeconds(0, 0);
+            // datetime-local wants local time without the Z suffix
+            const local = new Date(t.getTime() - t.getTimezoneOffset() * 60000)
+                .toISOString().slice(0, 16);
+            document.getElementById('bulkStartAt').value = local;
+
+            // Load templates + personalizer + send-limits status in parallel
+            const [templates, personalizer, limits] = await Promise.all([
+                fetch('/api/outreach/templates').then(r => r.json()).catch(() => ({})),
+                fetch('/api/outreach/personalizer/status').then(r => r.json()).catch(() => ({})),
+                fetch('/api/emails/send-limits').then(r => r.json()).catch(() => ({})),
+            ]);
+
+            // Populate the template dropdown
+            const sel = document.getElementById('bulkTemplate');
+            sel.innerHTML = '';
+            const entries = Object.entries(templates);
+            for (const [key, t] of entries) {
+                const usesOpener = (t.body || '').includes('{personalized_opener}');
+                const label = `${t.name || key}${usesOpener ? ' ✨' : ''}`;
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = label;
+                sel.appendChild(opt);
+            }
+            // Default to the first template that uses {personalized_opener}
+            const personalized = entries.find(([, t]) => (t.body || '').includes('{personalized_opener}'));
+            if (personalized) sel.value = personalized[0];
+
+            // Personalizer status banner
+            const pBanner = document.getElementById('bulkPersonalizerStatus');
+            if (personalizer.configured) {
+                pBanner.style.background = '#064e3b';
+                pBanner.style.color = '#a7f3d0';
+                pBanner.style.border = '1px solid #047857';
+                pBanner.innerHTML = `✨ <strong>AI personalizer ready.</strong> Each email gets a unique 1–2 sentence opener via <code>${personalizer.model}</code> (~$0.001/email).`;
+                pBanner.style.display = 'block';
+            } else {
+                pBanner.style.background = '#7c2d12';
+                pBanner.style.color = '#fde68a';
+                pBanner.style.border = '1px solid #ca8a04';
+                pBanner.innerHTML = `⚠ <strong>AI personalizer not configured.</strong> Set <code>ANTHROPIC_API_KEY</code> in Railway for personalized openers. Without it, emails fall back to a generic regional opener.`;
+                pBanner.style.display = 'block';
+            }
+
+            // Send-limits banner — show today's usage so the operator knows
+            // if they're about to exceed caps.
+            const lBanner = document.getElementById('bulkLimitsStatus');
+            const usedToday = limits.today_total || 0;
+            const cap = limits.daily_cap_effective || 0;
+            const remaining = Math.max(0, cap - usedToday);
+            const warmupNote = limits.first_send_date && limits.warmup_day < 14
+                ? ` (warm-up day ${limits.warmup_day} of 14)`
+                : '';
+            lBanner.innerHTML = `
+                <strong>Today's send budget:</strong>
+                ${usedToday}/${cap} used${warmupNote},
+                <strong style="color:${remaining < count ? '#fca5a5' : '#a7f3d0'}">${remaining} remaining</strong>.
+                Per-domain cap: ${limits.per_domain_daily_cap || 0}/day.
+                ${remaining < count ? `<br>Only the first ${remaining} of your ${count} selections will queue today — the rest are skipped.` : ''}
+            `;
+            lBanner.style.display = 'block';
+
+            document.getElementById('bulkDraftModal').style.display = 'flex';
+        }
+
+        function closeBulkDraftModal() {
+            document.getElementById('bulkDraftModal').style.display = 'none';
+        }
+
+        async function submitBulkDraft() {
+            const business_ids = Array.from(_bulkSelected.keys());
+            const template_key = document.getElementById('bulkTemplate').value;
+            const cadence_seconds = parseInt(document.getElementById('bulkCadence').value, 10);
+            const startAtLocal = document.getElementById('bulkStartAt').value;
+            const start_at = startAtLocal
+                ? new Date(startAtLocal).toISOString()
+                : null;
+
+            const btn = document.getElementById('bulkSubmitBtn');
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.textContent = 'Queuing…';
+
+            const resultBox = document.getElementById('bulkSubmitResult');
+            resultBox.style.display = 'block';
+            resultBox.innerHTML = '<div style="color:#94a3b8">Drafting + personalizing — ~1s per recipient with AI opener…</div>';
+
+            try {
+                const r = await fetch('/api/outreach/bulk-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        business_ids, template_key, cadence_seconds, start_at,
+                    }),
+                });
+                const summary = await r.json();
+                _renderBulkResults(summary);
+                btn.textContent = 'Done';
+                if (summary.ok && summary.queued > 0) {
+                    showToast(`Queued ${summary.queued} of ${summary.received} emails. Switch to Pipeline → Scheduled Emails to watch them fire.`);
+                    // Clear selection on success so they don't re-fire the same batch
+                    clearBizSelection();
+                }
+            } catch (e) {
+                resultBox.innerHTML = `<div style="color:#fca5a5">Request failed: ${e.message}</div>`;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.innerHTML = `Queue <span id="bulkSubmitCount">${business_ids.length}</span> emails`;
+            }
+        }
+
+        function _renderBulkResults(summary) {
+            const box = document.getElementById('bulkSubmitResult');
+            if (!summary.ok && summary.error) {
+                box.innerHTML = `<div style="color:#fca5a5"><strong>Error:</strong> ${summary.error}</div>`;
+                return;
+            }
+            const counts = `
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+                    <div style="background:#064e3b;border-radius:4px;padding:8px;text-align:center">
+                        <div style="font-size:22px;font-weight:700;color:#a7f3d0">${summary.queued || 0}</div>
+                        <div style="font-size:10px;color:#94a3b8">QUEUED</div>
+                    </div>
+                    <div style="background:#172554;border-radius:4px;padding:8px;text-align:center">
+                        <div style="font-size:22px;font-weight:700;color:#93c5fd">${summary.personalized || 0}</div>
+                        <div style="font-size:10px;color:#94a3b8">PERSONALIZED</div>
+                    </div>
+                    <div style="background:#1e293b;border-radius:4px;padding:8px;text-align:center">
+                        <div style="font-size:22px;font-weight:700;color:#fca5a5">${(summary.skipped_suppressed||0) + (summary.skipped_no_email||0) + (summary.skipped_hygiene||0) + (summary.skipped_not_found||0)}</div>
+                        <div style="font-size:10px;color:#94a3b8">SKIPPED</div>
+                    </div>
+                </div>
+            `;
+            const skipBreakdown = [];
+            if (summary.skipped_suppressed) skipBreakdown.push(`<li>${summary.skipped_suppressed} on suppression list</li>`);
+            if (summary.skipped_no_email) skipBreakdown.push(`<li>${summary.skipped_no_email} have no email</li>`);
+            if (summary.skipped_hygiene) skipBreakdown.push(`<li>${summary.skipped_hygiene} blocked by daily/per-domain cap</li>`);
+            if (summary.skipped_not_found) skipBreakdown.push(`<li>${summary.skipped_not_found} business IDs not found</li>`);
+            if (summary.personalization_fallback) skipBreakdown.push(`<li>${summary.personalization_fallback} used regional fallback opener (AI failed)</li>`);
+            const skipsHtml = skipBreakdown.length
+                ? `<ul style="margin:0 0 8px 18px;color:#94a3b8;font-size:11px">${skipBreakdown.join('')}</ul>`
+                : '';
+            box.innerHTML = counts + skipsHtml +
+                `<div style="color:#94a3b8;font-size:11px;margin-top:8px">First send: ${summary.start_at ? new Date(summary.start_at).toLocaleString() : 'now'} · staggered ${summary.cadence_seconds || 180}s apart</div>`;
+        }
+
+        // ---------- Settings tab — send limits + personalizer panels ---------
+
+        async function loadSendLimits() {
+            const panel = document.getElementById('sendLimitsPanel');
+            if (!panel) return;
+            try {
+                const r = await fetch('/api/emails/send-limits');
+                const data = await r.json();
+                const usedToday = data.today_total || 0;
+                const cap = data.daily_cap_effective || 0;
+                const base = data.daily_cap_base || 0;
+                const remaining = Math.max(0, cap - usedToday);
+                const warmupNote = data.first_send_date
+                    ? (data.warmup_day < 14
+                        ? `<span style="color:#fde68a">⚠ Warm-up day ${data.warmup_day} of 14</span> — effective cap is reduced (10/day weeks 1, 25/day week 2)`
+                        : `<span style="color:#a7f3d0">✓ Warm-up complete</span>`)
+                    : '<span style="color:#94a3b8">No sends yet — warm-up will start on first send</span>';
+                const domains = data.today_by_domain || {};
+                const domainRows = Object.entries(domains)
+                    .sort((a,b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .map(([d, n]) => `<tr><td style="padding:4px 8px">@${d}</td><td style="padding:4px 8px;text-align:right;color:${n >= data.per_domain_daily_cap ? '#fca5a5' : '#cbd5e1'}">${n} / ${data.per_domain_daily_cap}</td></tr>`)
+                    .join('');
+                panel.innerHTML = `
+                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:14px">
+                        <div>
+                            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Today's usage</div>
+                            <div style="font-size:24px;font-weight:700;color:${remaining < 5 ? '#fca5a5' : '#e2e8f0'};margin-top:2px">${usedToday} / ${cap}</div>
+                            <div style="font-size:11px;color:#94a3b8">${remaining} remaining today</div>
+                        </div>
+                        <div>
+                            <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Per-domain cap</div>
+                            <div style="font-size:24px;font-weight:700;color:#e2e8f0;margin-top:2px">${data.per_domain_daily_cap}</div>
+                            <div style="font-size:11px;color:#94a3b8">max sends to any single domain/day</div>
+                        </div>
+                    </div>
+                    <div style="background:#0f172a;border:1px solid #334155;border-radius:4px;padding:10px;font-size:12px;color:#cbd5e1;margin-bottom:12px">
+                        ${warmupNote}
+                        <br><span style="color:#64748b;font-size:11px">Base cap: ${base}/day · Effective today: ${cap}/day</span>
+                    </div>
+                    ${domainRows ? `<div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px">Today's sends by recipient domain (top 10)</div>
+                        <table style="width:100%;font-size:11px;color:#cbd5e1;background:#0f172a;border-radius:4px;overflow:hidden">${domainRows}</table>
+                    </div>` : ''}
+                    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #334155;font-size:10px;color:#64748b">
+                        These limits are set via Railway environment variables:
+                        <code style="color:#94a3b8">CWSCRAPER_SEND_DAILY_CAP</code>,
+                        <code style="color:#94a3b8">CWSCRAPER_SEND_PER_DOMAIN_DAILY_CAP</code>,
+                        <code style="color:#94a3b8">CWSCRAPER_SEND_WARMUP_DISABLED</code>.
+                        Change them in your scraper service's Variables tab.
+                    </div>
+                `;
+            } catch (e) {
+                panel.innerHTML = `<div style="color:#fca5a5;font-size:12px">Failed to load send limits: ${e.message}</div>`;
+            }
+        }
+
+        async function loadPersonalizerStatus() {
+            const panel = document.getElementById('personalizerStatusPanel');
+            if (!panel) return;
+            try {
+                const r = await fetch('/api/outreach/personalizer/status');
+                const data = await r.json();
+                if (data.configured) {
+                    panel.innerHTML = `
+                        <div style="color:#a7f3d0;font-size:13px;margin-bottom:6px">✓ Configured and ready</div>
+                        <div style="font-size:11px;color:#94a3b8">
+                            Model: <code style="color:#e2e8f0">${data.model}</code><br>
+                            Local cache: ${data.cache_size} openers cached (re-drafting a previously-personalized business is free)
+                        </div>
+                    `;
+                } else {
+                    panel.innerHTML = `
+                        <div style="color:#fde68a;font-size:13px;margin-bottom:6px">⚠ Not configured</div>
+                        <div style="font-size:11px;color:#94a3b8">
+                            Set <code style="color:#e2e8f0">ANTHROPIC_API_KEY</code> in your scraper service's Variables tab on Railway. Until then, every cold email uses a generic regional opener.
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                panel.innerHTML = `<div style="color:#fca5a5;font-size:12px">Failed to load: ${e.message}</div>`;
+            }
         }
     </script>
 </body>
