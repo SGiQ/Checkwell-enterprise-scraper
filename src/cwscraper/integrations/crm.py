@@ -18,7 +18,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-_BATCH = 200
+_BATCH = 50  # companies do more per-item work (company upsert + nested people)
 
 
 def _enabled() -> bool:
@@ -33,55 +33,78 @@ def _as_dict(obj: Any) -> dict:
     return {}
 
 
-def _business_to_lead(b: dict) -> dict:
-    """Map a BusinessLead to the CRM ingestion payload.
+# Scraper category slug -> CRM org_type label.
+ORG_TYPE_BY_CATEGORY = {
+    "pace_program": "PACE",
+    "area_agency_on_aging": "Area Agency on Aging",
+    "home_health_agency": "Home Health Agency",
+    "senior_care_agency": "Senior Care Agency",
+    "memory_care_facility": "Memory Care Facility",
+    "assisted_living_facility": "Assisted Living Facility",
+    "outpatient_clinic": "Outpatient Clinic",
+    "mental_health_practice": "Mental Health Practice",
+    "geriatric_care_manager": "Geriatric Care Manager",
+    "rehab_center": "Rehab Center",
+    "church": "Church",
+}
 
-    Uses the first enriched contact (if any) as the person; the org name becomes
-    the company. `external_id` is the stable source+id so re-scans merge rather
-    than duplicate. Everything else is preserved in metadata.
+
+def _business_to_company(b: dict) -> dict:
+    """Map a BusinessLead to the CRM Company ingestion payload.
+
+    The org becomes a Company; enriched `contacts[]` become the people under it.
+    `external_id` is the stable source+id so re-scans merge rather than duplicate.
     """
-    contacts = b.get("contacts") or []
-    primary = contacts[0] if isinstance(contacts, list) and contacts else {}
-    name = (primary.get("name") if isinstance(primary, dict) else "") or b.get("name") or ""
+    people = []
+    for c in (b.get("contacts") or []):
+        if isinstance(c, dict) and (c.get("name") or c.get("email")):
+            people.append({
+                "name": c.get("name") or "",
+                "title": c.get("title") or None,
+                "email": c.get("email") or None,
+                "phone": c.get("phone") or None,
+            })
 
     return {
-        "name": name,  # the CRM splits this into first/last
-        "email": (primary.get("email") if isinstance(primary, dict) else None) or b.get("email") or None,
-        "phone": (primary.get("phone") if isinstance(primary, dict) else None) or b.get("phone") or None,
-        "company": b.get("name") or None,
-        "title": (primary.get("title") if isinstance(primary, dict) else None) or None,
-        "lead_source": b.get("source") or None,
+        "name": b.get("name") or "",
+        "org_type": ORG_TYPE_BY_CATEGORY.get(b.get("category") or ""),
+        "state": b.get("state") or None,
+        "metro": b.get("city") or None,
+        "website": b.get("website") or None,
+        "phone": b.get("phone") or None,
+        "email": b.get("email") or None,
         "source": b.get("source") or None,
         "external_id": f"{b.get('source', '')}:{b.get('id', '')}",
+        "contacts": people,
         "metadata": {
             "category": b.get("category"),
             "address": b.get("address"),
             "city": b.get("city"),
-            "state": b.get("state"),
             "zip_code": b.get("zip_code"),
             "country": b.get("country"),
-            "website": b.get("website"),
             "rating": b.get("rating"),
             "review_count": b.get("review_count"),
             "discovered_via": b.get("discovered_via"),
             "source_niches": b.get("source_niches"),
-            "contacts": contacts,
             "scraper_status": b.get("status"),
         },
     }
 
 
 def push_businesses(businesses: list) -> None:
-    """POST business leads to the CRM in batches. Never raises."""
+    """POST scraped businesses to the CRM as Companies, in batches. Never raises.
+
+    (Name kept for the existing engine call sites; payload is now company-shaped.)
+    """
     if not _enabled() or not businesses:
         return
 
-    leads = [_business_to_lead(_as_dict(b)) for b in businesses]
-    leads = [l for l in leads if l.get("name")]  # CRM requires a name
-    if not leads:
+    companies = [_business_to_company(_as_dict(b)) for b in businesses]
+    companies = [c for c in companies if c.get("name")]  # a Company needs a name
+    if not companies:
         return
 
-    url = os.getenv("SGIQ_CRM_URL", "").rstrip("/") + "/api/ingest/leads"
+    url = os.getenv("SGIQ_CRM_URL", "").rstrip("/") + "/api/ingest/companies"
     headers = {
         "X-SGIQ-Key": os.getenv("SGIQ_CRM_API_KEY", ""),
         "Content-Type": "application/json",
@@ -89,10 +112,10 @@ def push_businesses(businesses: list) -> None:
     timeout = int(os.getenv("SGIQ_CRM_TIMEOUT", "15"))
 
     sent = 0
-    for i in range(0, len(leads), _BATCH):
-        chunk = leads[i : i + _BATCH]
+    for i in range(0, len(companies), _BATCH):
+        chunk = companies[i : i + _BATCH]
         try:
-            resp = requests.post(url, headers=headers, json=chunk, timeout=timeout)
+            resp = requests.post(url, headers=headers, json={"companies": chunk}, timeout=timeout)
             if resp.status_code >= 300:
                 log.warning("CRM ingest failed (%s): %s", resp.status_code, resp.text[:300])
             else:
@@ -101,4 +124,4 @@ def push_businesses(businesses: list) -> None:
             log.warning("CRM ingest error: %s", e)
 
     if sent:
-        log.info("Pushed %d business leads to SGiQ CRM", sent)
+        log.info("Pushed %d companies to SGiQ CRM", sent)
