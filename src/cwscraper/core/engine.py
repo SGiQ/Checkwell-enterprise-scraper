@@ -245,6 +245,7 @@ class ScanEngine:
 
         progress_lock = threading.Lock()
         cancelled = False
+        enriched_ids: set[str] = set()
 
         def _do_one(biz: dict) -> tuple[str, object, bool]:
             # Honor cancel signal — drop the work without running the enricher.
@@ -274,6 +275,7 @@ class ScanEngine:
                         patch["contacts"] = result.contacts
                     if patch:
                         self.repo.update_business(biz_id, patch)
+                        enriched_ids.add(biz_id)
                 with progress_lock:
                     if not skipped:
                         ctx.businesses_done += 1
@@ -285,6 +287,16 @@ class ScanEngine:
                         elapsed_seconds=round(time.time() - start, 1),
                         errors=list(ctx.errors)[-20:],  # last 20 only
                     )
+
+        # Push freshly-enriched businesses (now carrying email/contacts) to the
+        # CRM so it gets the contact info. Idempotent via external_id (merges).
+        if enriched_ids:
+            try:
+                from cwscraper.integrations.crm import push_businesses
+                enriched = [b for b in self.repo.get_businesses() if b.get("id") in enriched_ids]
+                push_businesses(enriched)
+            except Exception:
+                pass
 
         elapsed = round(time.time() - start, 1)
         final_status = "cancelled" if cancelled else "complete"
@@ -357,6 +369,12 @@ class ScanEngine:
 
         if all_biz:
             self.repo.add_businesses(all_biz)
+            # Best-effort push to the SGiQ CRM (no-op unless SGIQ_CRM_* env set).
+            try:
+                from cwscraper.integrations.crm import push_businesses
+                push_businesses(all_biz)
+            except Exception:  # never let CRM sync break a scan
+                pass
 
         elapsed = round(time.time() - start, 1)
         result = {
