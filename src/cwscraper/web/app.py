@@ -334,6 +334,29 @@ def create_app() -> Flask:
             "progress": ctx.engine.progress,
         })
 
+    @app.route("/api/crm/push-all", methods=["POST"])
+    def api_crm_push_all():
+        """Backfill: push ALL stored business leads to the SGiQ CRM.
+
+        Idempotent (external_id = source:id), so safe to run repeatedly — re-runs
+        merge rather than duplicate. Runs in a background thread to avoid HTTP
+        timeouts on large stores.
+        """
+        if not (os.getenv("SGIQ_CRM_URL") and os.getenv("SGIQ_CRM_API_KEY")):
+            return jsonify({
+                "error": "Set SGIQ_CRM_URL and SGIQ_CRM_API_KEY to enable the CRM push.",
+            }), 400
+        from cwscraper.integrations.crm import push_businesses
+
+        businesses = ctx.repo.get_businesses()
+        if not businesses:
+            return jsonify({"status": "empty", "businesses": 0})
+
+        threading.Thread(
+            target=push_businesses, args=(businesses,), daemon=True
+        ).start()
+        return jsonify({"status": "started", "businesses": len(businesses)})
+
     @app.route("/api/discover", methods=["POST"])
     def api_discover():
         if ctx.engine.is_scanning:
