@@ -336,11 +336,15 @@ def create_app() -> Flask:
 
     @app.route("/api/crm/push-all", methods=["POST"])
     def api_crm_push_all():
-        """Backfill: push ALL stored business leads to the SGiQ CRM.
+        """Resumable backfill: push stored businesses to the SGiQ CRM as Companies.
 
-        Idempotent (external_id = source:id), so safe to run repeatedly — re-runs
-        merge rather than duplicate. Runs in a background thread to avoid HTTP
-        timeouts on large stores.
+        Processes businesses[offset:offset+limit] SYNCHRONOUSLY and returns
+        progress, so a caller can drive it to completion. (A background thread is
+        unreliable here — gunicorn recycles the worker mid-run and every call
+        would restart from the beginning, so only the first chunk ever lands.)
+        Idempotent (external_id = source:id) — re-runs merge rather than duplicate.
+
+        Query params: ?offset=0&limit=50
         """
         if not (os.getenv("SGIQ_CRM_URL") and os.getenv("SGIQ_CRM_API_KEY")):
             return jsonify({
@@ -349,13 +353,23 @@ def create_app() -> Flask:
         from cwscraper.integrations.crm import push_businesses
 
         businesses = ctx.repo.get_businesses()
-        if not businesses:
-            return jsonify({"status": "empty", "businesses": 0})
+        total = len(businesses)
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+            limit = max(1, min(500, int(request.args.get("limit", 50))))
+        except (TypeError, ValueError):
+            offset, limit = 0, 50
 
-        threading.Thread(
-            target=push_businesses, args=(businesses,), daemon=True
-        ).start()
-        return jsonify({"status": "started", "businesses": len(businesses)})
+        chunk = businesses[offset:offset + limit]
+        push_businesses(chunk)  # synchronous — sized to finish within the request
+        next_offset = offset + len(chunk)
+        return jsonify({
+            "pushed": len(chunk),
+            "offset": offset,
+            "next_offset": next_offset,
+            "total": total,
+            "done": next_offset >= total,
+        })
 
     @app.route("/api/discover", methods=["POST"])
     def api_discover():
