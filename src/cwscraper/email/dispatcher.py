@@ -76,6 +76,7 @@ class EmailDispatcher:
                     "No email transport configured. Set RESEND_API_KEY + "
                     "CWSCRAPER_FROM_EMAIL in Railway."
                 )
+                self._notify_crm(entry, "failed", error="no email transport configured")
             return 0
 
         sent_count = 0
@@ -89,6 +90,7 @@ class EmailDispatcher:
                     entry["id"],
                     f"Suppressed: {entry['to_email']} is on the do-not-contact list",
                 )
+                self._notify_crm(entry, "suppressed", error="recipient on suppression list")
                 logger.info(
                     "Skipped send to %s (suppressed) — queue entry %s",
                     entry["to_email"], entry["id"],
@@ -103,20 +105,33 @@ class EmailDispatcher:
                     from_name=entry.get("from_name", ""),
                     reply_to=entry.get("reply_to", ""),
                 )
-                self.queue.mark_sent(entry["id"], provider_id=result.get("provider_id", ""))
+                provider_id = result.get("provider_id", "")
+                self.queue.mark_sent(entry["id"], provider_id=provider_id)
                 self._record_send_on_prospect(entry)
                 # Stamp the first-send date so the warm-up curve has a
                 # reference point. Idempotent — only writes once.
                 record_first_send_date_if_unset()
+                self._notify_crm(entry, "sent", provider_id=provider_id)
                 sent_count += 1
                 logger.info("Sent scheduled email %s to %s", entry["id"], entry["to_email"])
             except TransportError as e:
                 self.queue.mark_failed(entry["id"], str(e))
+                self._notify_crm(entry, "failed", error=str(e))
                 logger.error("Failed to send %s: %s", entry["id"], e)
             except Exception as e:
                 self.queue.mark_failed(entry["id"], f"{type(e).__name__}: {e}")
+                self._notify_crm(entry, "failed", error=f"{type(e).__name__}: {e}")
                 logger.exception("Unhandled error sending %s", entry["id"])
         return sent_count
+
+    def _notify_crm(self, entry: dict, status: str, *, provider_id: str = "", error: str = "") -> None:
+        """Best-effort delivery-status callback to the CRM (no-op for non-CRM
+        emails or when CRM env isn't configured). Never raises into the tick loop."""
+        try:
+            from cwscraper.integrations.crm import notify_email_status
+            notify_email_status(entry, status, provider_id=provider_id, error=error)
+        except Exception:  # noqa: BLE001 — never let the callback break dispatch
+            logger.debug("CRM email-status notify failed", exc_info=True)
 
     def _record_send_on_prospect(self, entry: dict) -> None:
         """Stamp the prospect: activity log entry + auto-advance pipeline."""
