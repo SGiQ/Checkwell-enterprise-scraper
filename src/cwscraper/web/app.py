@@ -1154,6 +1154,72 @@ def create_app() -> Flask:
         )
         return jsonify({"ok": True, "email": entry})
 
+    @app.route("/api/emails/send-external", methods=["POST"])
+    def api_emails_send_external():
+        """Authed send entry point for the SGiQ CRM.
+
+        Shared-secret auth via the CRM_INBOUND_KEY env var (X-CRM-Key header,
+        constant-time compare, fail-closed). The CRM composes the message; we own
+        transport, suppression, send-limits/warmup, and unsubscribe.
+
+        Body: {to, subject, body_text, from?, reply_to?, crm_contact_id?, send_at?}
+        """
+        import hmac
+        import re as _re
+        import uuid as _uuid
+        from cwscraper.email.send_limits import check_can_queue
+
+        expected = (os.getenv("CRM_INBOUND_KEY") or "").strip()
+        presented = (request.headers.get("X-CRM-Key") or "").strip()
+        if not expected or not presented or not hmac.compare_digest(expected, presented):
+            return jsonify({"status": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        to_email = (data.get("to") or "").strip().lower()
+        subject = (data.get("subject") or "").strip()
+        body_text = data.get("body_text") or ""
+        if not to_email or not subject or not body_text:
+            return jsonify({"status": "error", "error": "to, subject, body_text required"}), 400
+        if not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", to_email):
+            return jsonify({"status": "error", "error": f"invalid to: {to_email!r}"}), 400
+
+        # Suppression (unsubscribes/bounces/manual) — 200 so the CRM records it.
+        if ctx.suppression and ctx.suppression.is_suppressed(to_email):
+            return jsonify({"status": "suppressed"}), 200
+
+        # Send-limits / warmup (daily cap, per-domain cap).
+        allowed, reason = check_can_queue(to_email, ctx.email_queue)
+        if not allowed:
+            return jsonify({"status": "rate_limited", "reason": reason}), 429
+
+        sched_raw = (data.get("send_at") or "now").strip()
+        if sched_raw.lower() in ("now", ""):
+            scheduled_for = datetime.now(timezone.utc).isoformat()
+        else:
+            try:
+                parsed = datetime.fromisoformat(sched_raw.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                scheduled_for = parsed.isoformat()
+            except ValueError:
+                return jsonify({"status": "error", "error": f"invalid send_at: {sched_raw!r}"}), 400
+
+        crm_contact_id = (data.get("crm_contact_id") or "").strip()
+        prospect_id = f"crm:{crm_contact_id}" if crm_contact_id else f"crm:{_uuid.uuid4().hex}"
+
+        entry = ctx.email_queue.enqueue(
+            prospect_id=prospect_id,
+            lead_type="external",
+            to_email=to_email,
+            subject=subject,
+            body=body_text,
+            scheduled_for=scheduled_for,
+            from_email=(data.get("from") or os.getenv("CWSCRAPER_FROM_EMAIL") or "").strip(),
+            from_name=os.getenv("CWSCRAPER_FROM_NAME", "").strip(),
+            reply_to=(data.get("reply_to") or "").strip(),
+        )
+        return jsonify({"status": "queued", "id": entry["id"]}), 200
+
     @app.route("/api/emails/<email_id>/cancel", methods=["POST"])
     def api_emails_cancel(email_id):
         result = ctx.email_queue.cancel(email_id)
