@@ -166,3 +166,49 @@ def notify_email_status(
             log.warning("CRM email-status notify failed (%s): %s", resp.status_code, resp.text[:200])
     except Exception as e:  # noqa: BLE001 — best-effort, never fatal
         log.warning("CRM email-status notify error: %s", e)
+
+
+def notify_email_reply(
+    *,
+    from_email: str,
+    classification: str,
+    subject: str = "",
+    snippet: str = "",
+    message_id: str = "",
+    received_at: str = "",
+) -> None:
+    """Forward a classified inbound reply to the CRM.
+
+    Best-effort and non-fatal. The CRM matches the reply to a contact by
+    `from_email` within the key's tenant and halts any active campaign drip;
+    non-matches are ignored on the CRM side. Reuses the SGIQ_CRM_URL +
+    SGIQ_CRM_API_KEY config; the key needs the 'email:replies' scope. Sent for
+    every classified reply (scraper prospects AND CRM contacts) — harmless to
+    forward one the CRM doesn't recognize.
+    """
+    if not _enabled():
+        return
+    addr = (from_email or "").strip().lower()
+    if not addr or "@" not in addr:
+        return
+
+    url = os.getenv("SGIQ_CRM_URL", "").rstrip("/") + "/api/webhooks/email-reply"
+    headers = {
+        "X-SGIQ-Key": os.getenv("SGIQ_CRM_API_KEY", ""),
+        "Content-Type": "application/json",
+    }
+    timeout = int(os.getenv("SGIQ_CRM_TIMEOUT", "15"))
+    payload = {
+        "from_email": addr,
+        "classification": classification,
+        "subject": subject or "",
+        "snippet": (snippet or "")[:500],
+        "message_id": message_id or "",
+        "received_at": received_at or "",
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        if resp.status_code >= 300:
+            log.warning("CRM reply notify failed (%s): %s", resp.status_code, resp.text[:200])
+    except Exception as e:  # noqa: BLE001 — best-effort, never fatal
+        log.warning("CRM reply notify error: %s", e)

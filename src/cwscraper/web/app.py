@@ -1221,6 +1221,25 @@ def create_app() -> Flask:
         crm_contact_id = (data.get("crm_contact_id") or "").strip()
         prospect_id = f"crm:{crm_contact_id}" if crm_contact_id else f"crm:{_uuid.uuid4().hex}"
 
+        # Optional AI personalization: fill a {{personalized_opener}} token using
+        # the same Haiku personalizer the bulk drafter uses. The CRM passes
+        # `personalize: true` + a `personalize_context` ({name, city, state}).
+        # Falls back to a generic regional opener when ANTHROPIC_API_KEY is unset.
+        if data.get("personalize") and "personalized_opener" in body_text:
+            pctx = data.get("personalize_context") or {}
+            business = {
+                "id": prospect_id,
+                "name": (pctx.get("name") or "").strip(),
+                "city": (pctx.get("city") or "").strip(),
+                "state": (pctx.get("state") or "").strip(),
+                "category": (pctx.get("category") or "").strip(),
+            }
+            try:
+                opener = ctx.personalizer.personalize(business, ctx.niche).opener or ""
+            except Exception:  # noqa: BLE001 — never fail a send on personalization
+                opener = ""
+            body_text = body_text.replace("{{personalized_opener}}", opener).replace("{personalized_opener}", opener)
+
         entry = ctx.email_queue.enqueue(
             prospect_id=prospect_id,
             lead_type="external",
