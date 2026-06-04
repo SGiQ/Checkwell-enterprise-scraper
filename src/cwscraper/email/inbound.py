@@ -281,6 +281,12 @@ class InboundEmailPoller:
             label = classify_reply(from_addr, subject, text_body or html_body)
             summary["classified"][label] = summary["classified"].get(label, 0) + 1
 
+            # Best-effort: forward every classified reply to the SGiQ CRM, which
+            # matches by email within its tenant and halts any active campaign
+            # drip. Non-matches are ignored CRM-side. Independent of the scraper's
+            # own prospect matching below.
+            self._notify_crm_reply(from_addr, label, subject, text_body or html_body)
+
             prospect = self._find_prospect_by_email(from_addr)
             if prospect:
                 summary["matched"] += 1
@@ -303,6 +309,19 @@ class InboundEmailPoller:
                     )
 
         return summary
+
+    def _notify_crm_reply(self, from_addr: str, label: str, subject: str, body: str) -> None:
+        """Best-effort forward of a classified reply to the CRM. Never raises."""
+        try:
+            from cwscraper.integrations.crm import notify_email_reply
+            notify_email_reply(
+                from_email=from_addr,
+                classification=label,
+                subject=subject or "",
+                snippet=body or "",
+            )
+        except Exception:  # noqa: BLE001 — never let the forward break the poll loop
+            logger.debug("CRM reply notify failed", exc_info=True)
 
     # --- prospect lookup + state machine ---
 
