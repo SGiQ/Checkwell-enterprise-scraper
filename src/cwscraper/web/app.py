@@ -1197,14 +1197,19 @@ def create_app() -> Flask:
         if not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", to_email):
             return jsonify({"status": "error", "error": f"invalid to: {to_email!r}"}), 400
 
-        # Suppression (unsubscribes/bounces/manual) — 200 so the CRM records it.
-        if ctx.suppression and ctx.suppression.is_suppressed(to_email):
-            return jsonify({"status": "suppressed"}), 200
+        # Transactional sends (e.g. CRM "new form" alerts) bypass cold-email
+        # suppression + send caps so an internal notification always goes out.
+        transactional = bool(data.get("transactional"))
 
-        # Send-limits / warmup (daily cap, per-domain cap).
-        allowed, reason = check_can_queue(to_email, ctx.email_queue)
-        if not allowed:
-            return jsonify({"status": "rate_limited", "reason": reason}), 429
+        if not transactional:
+            # Suppression (unsubscribes/bounces/manual) — 200 so the CRM records it.
+            if ctx.suppression and ctx.suppression.is_suppressed(to_email):
+                return jsonify({"status": "suppressed"}), 200
+
+            # Send-limits / warmup (daily cap, per-domain cap).
+            allowed, reason = check_can_queue(to_email, ctx.email_queue)
+            if not allowed:
+                return jsonify({"status": "rate_limited", "reason": reason}), 429
 
         sched_raw = (data.get("send_at") or "now").strip()
         if sched_raw.lower() in ("now", ""):
