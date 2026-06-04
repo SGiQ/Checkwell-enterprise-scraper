@@ -125,3 +125,44 @@ def push_businesses(businesses: list) -> None:
 
     if sent:
         log.info("Pushed %d companies to SGiQ CRM", sent)
+
+
+def notify_email_status(
+    entry: dict,
+    status: str,
+    *,
+    provider_id: str = "",
+    error: str = "",
+) -> None:
+    """Tell the CRM the final delivery status of a CRM-originated email.
+
+    Best-effort and non-fatal — a delivery never depends on this. Only fires for
+    CRM emails (lead_type 'external' or prospect_id 'crm:<id>'); the CRM matches
+    the row by the scraper queue id (stored there as provider_id). Reuses the
+    SGIQ_CRM_URL + SGIQ_CRM_API_KEY config; the key needs the 'email:status' scope.
+    """
+    if not _enabled():
+        return
+    pid = entry.get("prospect_id", "") or ""
+    if entry.get("lead_type") != "external" and not pid.startswith("crm:"):
+        return
+
+    url = os.getenv("SGIQ_CRM_URL", "").rstrip("/") + "/api/webhooks/email-status"
+    headers = {
+        "X-SGIQ-Key": os.getenv("SGIQ_CRM_API_KEY", ""),
+        "Content-Type": "application/json",
+    }
+    timeout = int(os.getenv("SGIQ_CRM_TIMEOUT", "15"))
+    payload = {
+        "queue_id": entry.get("id", ""),
+        "status": status,
+        "sent_at": entry.get("sent_at") or "",
+        "provider_id": provider_id,
+        "error": (error or "")[:300],
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        if resp.status_code >= 300:
+            log.warning("CRM email-status notify failed (%s): %s", resp.status_code, resp.text[:200])
+    except Exception as e:  # noqa: BLE001 — best-effort, never fatal
+        log.warning("CRM email-status notify error: %s", e)
