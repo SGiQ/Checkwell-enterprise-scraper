@@ -122,6 +122,10 @@ class EmailDispatcher:
         """Stamp the prospect: activity log entry + auto-advance pipeline."""
         prospect_id = entry.get("prospect_id", "")
         lead_type = entry.get("lead_type", "business")
+        # CRM-originated sends (routed in via /api/emails/send-external) have no
+        # scraper prospect to advance — skip the pipeline update entirely.
+        if lead_type == "external" or prospect_id.startswith("crm:"):
+            return
         if not prospect_id:
             return
 
