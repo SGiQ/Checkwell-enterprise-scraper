@@ -1273,6 +1273,37 @@ def create_app() -> Flask:
             }), 404
         return jsonify({"ok": True, "email": result})
 
+    @app.route("/api/emails/status-lookup", methods=["POST"])
+    def api_emails_status_lookup():
+        """Return the current queue status for a batch of queue ids.
+
+        Lets the CRM reconcile rows it still has as 'queued' when a delivery-status
+        callback was lost (e.g. a transient error or a missing scope). Auth reuses
+        the CRM_INBOUND_KEY shared secret, like send-external.
+        Body: { queue_ids: ["..."] } -> { results: [{queue_id, status, sent_at, error}] }
+        """
+        expected = (os.getenv("CRM_INBOUND_KEY") or "").strip()
+        presented = (request.headers.get("X-CRM-Key") or "").strip()
+        if not expected or not presented or not hmac.compare_digest(expected, presented):
+            return jsonify({"status": "unauthorized"}), 401
+
+        data = request.get_json(silent=True) or {}
+        ids = data.get("queue_ids")
+        if not isinstance(ids, list):
+            return jsonify({"status": "error", "error": "queue_ids must be a list"}), 400
+
+        results = []
+        for qid in ids[:500]:
+            entry = ctx.email_queue.get(str(qid))
+            if entry:
+                results.append({
+                    "queue_id": entry["id"],
+                    "status": entry.get("status", ""),
+                    "sent_at": entry.get("sent_at", ""),
+                    "error": entry.get("error", ""),
+                })
+        return jsonify({"results": results}), 200
+
     @app.route("/api/emails/<email_id>/send-now", methods=["POST"])
     def api_emails_send_now(email_id):
         """Move a pending email's scheduled_for to now, so the next tick sends it.
