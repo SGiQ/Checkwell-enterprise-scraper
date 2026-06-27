@@ -1259,7 +1259,8 @@ def create_app() -> Flask:
             body_html=body_html,
             scheduled_for=scheduled_for,
             from_email=(data.get("from") or os.getenv("CWSCRAPER_FROM_EMAIL") or "").strip(),
-            from_name=os.getenv("CWSCRAPER_FROM_NAME", "").strip(),
+            # Per-send display name (e.g. a campaign persona) overrides the env default.
+            from_name=(data.get("from_name") or os.getenv("CWSCRAPER_FROM_NAME") or "").strip(),
             reply_to=(data.get("reply_to") or "").strip(),
         )
         return jsonify({"status": "queued", "id": entry["id"]}), 200
