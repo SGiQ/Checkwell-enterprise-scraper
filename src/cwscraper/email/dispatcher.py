@@ -101,6 +101,7 @@ class EmailDispatcher:
                     to_email=entry["to_email"],
                     subject=entry["subject"],
                     body_text=entry["body"],
+                    body_html=entry.get("body_html", ""),
                     from_email=entry.get("from_email", ""),
                     from_name=entry.get("from_name", ""),
                     reply_to=entry.get("reply_to", ""),
