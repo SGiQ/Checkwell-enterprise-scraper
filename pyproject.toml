@@ -24,6 +24,7 @@ dependencies = [
     "requests>=2.31",
     "pyyaml>=6.0",
     "anthropic>=0.40",
+    "apitracker-client @ git+https://github.com/SGiQ/API-Tracker.git@py-client-v0.1.0#subdirectory=clients/python",
 ]
 
 [project.optional-dependencies]
