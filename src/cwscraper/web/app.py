@@ -1192,6 +1192,9 @@ def create_app() -> Flask:
         to_email = (data.get("to") or "").strip().lower()
         subject = (data.get("subject") or "").strip()
         body_text = data.get("body_text") or ""
+        # Optional HTML body — when present the transport sends multipart/alternative
+        # (body_text is the plain-text fallback, still required).
+        body_html = data.get("body_html") or ""
         if not to_email or not subject or not body_text:
             return jsonify({"status": "error", "error": "to, subject, body_text required"}), 400
         if not _re.match(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$", to_email):
@@ -1244,6 +1247,8 @@ def create_app() -> Flask:
             except Exception:  # noqa: BLE001 — never fail a send on personalization
                 opener = ""
             body_text = body_text.replace("{{personalized_opener}}", opener).replace("{personalized_opener}", opener)
+            if body_html:
+                body_html = body_html.replace("{{personalized_opener}}", opener).replace("{personalized_opener}", opener)
 
         entry = ctx.email_queue.enqueue(
             prospect_id=prospect_id,
@@ -1251,6 +1256,7 @@ def create_app() -> Flask:
             to_email=to_email,
             subject=subject,
             body=body_text,
+            body_html=body_html,
             scheduled_for=scheduled_for,
             from_email=(data.get("from") or os.getenv("CWSCRAPER_FROM_EMAIL") or "").strip(),
             from_name=os.getenv("CWSCRAPER_FROM_NAME", "").strip(),
