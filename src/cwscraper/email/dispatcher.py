@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from cwscraper.email.queue import ScheduledEmailQueue
 from cwscraper.email.send_limits import record_first_send_date_if_unset
@@ -18,7 +18,22 @@ from cwscraper.email.transport import EmailTransport, TransportError, get_transp
 
 logger = logging.getLogger("cwscraper.email.dispatcher")
 
-TICK_SECONDS = 60   # how often to check the queue
+TICK_SECONDS = 60                 # how often to check the queue
+MAX_SEND_ATTEMPTS = 3             # retries before giving up on a transient failure
+_BACKOFF_MINUTES = [5, 30, 120]   # delay before retry N (by prior attempt count)
+RECOVER_LEASE_SECONDS = 300       # a 'sending' entry older than this = a crash
+
+# Substrings that mark a send error as transient (worth retrying) vs permanent
+# (auth failure, invalid recipient, 5xx → give up). Default is permanent.
+_TRANSIENT_HINTS = (
+    "timeout", "timed out", "connection", "network", "temporarily",
+    "try again", "unavailable", "reset", "disconnect", "greylist", "4.7.0",
+)
+
+
+def _is_transient(err: str) -> bool:
+    e = (err or "").lower()
+    return any(h in e for h in _TRANSIENT_HINTS)
 
 
 class EmailDispatcher:
@@ -47,6 +62,15 @@ class EmailDispatcher:
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
+        # Recover sends abandoned by a previous crash before we begin (they're
+        # failed, not resent — at-most-once). Best-effort; never block startup.
+        try:
+            n = self.queue.recover_stale(RECOVER_LEASE_SECONDS)
+            if n:
+                logger.warning("Recovered %d stale 'sending' entr%s (marked failed, not resent)",
+                               n, "y" if n == 1 else "ies")
+        except Exception:  # noqa: BLE001
+            logger.exception("recover_stale on startup failed")
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._loop, name="email-dispatcher", daemon=True
@@ -83,7 +107,9 @@ class EmailDispatcher:
             self._tick_lock.release()
 
     def _tick_locked(self) -> int:
-        due = self.queue.due_pending()
+        # Claim atomically (flips to 'sending') so a crash mid-send can't leave
+        # an entry to be resent as 'pending'.
+        due = self.queue.claim_due()
         if not due:
             return 0
 
@@ -136,14 +162,33 @@ class EmailDispatcher:
                 sent_count += 1
                 logger.info("Sent scheduled email %s to %s", entry["id"], entry["to_email"])
             except TransportError as e:
-                self.queue.mark_failed(entry["id"], str(e))
-                self._notify_crm(entry, "failed", error=str(e))
-                logger.error("Failed to send %s: %s", entry["id"], e)
+                self._handle_send_failure(entry, str(e))
             except Exception as e:
+                # Unexpected (non-transport) error — treat as permanent; don't
+                # loop on a bug. Mark failed and tell the CRM.
                 self.queue.mark_failed(entry["id"], f"{type(e).__name__}: {e}")
                 self._notify_crm(entry, "failed", error=f"{type(e).__name__}: {e}")
                 logger.exception("Unhandled error sending %s", entry["id"])
         return sent_count
+
+    def _handle_send_failure(self, entry: dict, err: str) -> None:
+        """Retry transient failures with backoff; give up (and notify the CRM)
+        on permanent ones or once attempts are exhausted."""
+        attempts = int(entry.get("attempts", 0))
+        if _is_transient(err) and attempts < MAX_SEND_ATTEMPTS:
+            delay = _BACKOFF_MINUTES[min(attempts, len(_BACKOFF_MINUTES) - 1)]
+            when = (datetime.now(timezone.utc) + timedelta(minutes=delay)).isoformat()
+            # Back to 'pending' for a later tick — the CRM row stays 'queued', so
+            # no premature failure callback.
+            self.queue.reschedule(entry["id"], when, error=f"transient (retry {attempts + 1}): {err}")
+            logger.warning(
+                "Transient send failure for %s (attempt %d/%d) — retry in %dm: %s",
+                entry["id"], attempts + 1, MAX_SEND_ATTEMPTS, delay, err,
+            )
+        else:
+            self.queue.mark_failed(entry["id"], err)
+            self._notify_crm(entry, "failed", error=err)
+            logger.error("Giving up on %s after %d attempt(s): %s", entry["id"], attempts + 1, err)
 
     def _notify_crm(self, entry: dict, status: str, *, provider_id: str = "", error: str = "") -> None:
         """Best-effort delivery-status callback to the CRM (no-op for non-CRM
