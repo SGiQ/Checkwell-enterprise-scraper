@@ -22,4 +22,6 @@ RUN mkdir -p /data
 
 EXPOSE 5050
 
-CMD gunicorn --bind "0.0.0.0:${PORT:-5050}" --workers 2 --threads 4 --timeout 120 cwscraper.web.app:app
+# workers=1 on purpose — the email dispatcher + inbound poller started in boot()
+# poll a shared file queue; multiple workers race it and double-send. Scale via threads.
+CMD gunicorn --bind "0.0.0.0:${PORT:-5050}" --workers 1 --threads 8 --timeout 120 cwscraper.web.app:app

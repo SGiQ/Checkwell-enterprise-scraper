@@ -38,6 +38,11 @@ class EmailDispatcher:
         self.suppression = suppression
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # Serializes tick(): the periodic loop and the /send-now immediate tick
+        # both call tick() and would otherwise both claim the same due entry
+        # (the queue's per-write lock doesn't span read→send→mark). One tick at a
+        # time = no in-process double-send.
+        self._tick_lock = threading.Lock()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -62,7 +67,22 @@ class EmailDispatcher:
             self._stop.wait(TICK_SECONDS)
 
     def tick(self) -> int:
-        """Process every email due right now. Returns count sent."""
+        """Process every email due right now. Returns count sent.
+
+        Non-reentrant: if another tick is already draining the queue (e.g. the
+        periodic loop while /send-now also fires), this returns 0 immediately
+        rather than letting two threads claim the same entry. The in-flight tick
+        sends everything currently due; anything scheduled just after is picked
+        up on the next tick.
+        """
+        if not self._tick_lock.acquire(blocking=False):
+            return 0
+        try:
+            return self._tick_locked()
+        finally:
+            self._tick_lock.release()
+
+    def _tick_locked(self) -> int:
         due = self.queue.due_pending()
         if not due:
             return 0
