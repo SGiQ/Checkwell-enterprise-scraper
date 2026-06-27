@@ -1581,6 +1581,19 @@ def create_app() -> Flask:
                     {"pipeline_stage": "lost"},
                     action="unsubscribed_via_link",
                 )
+        # Mirror the opt-out to the CRM so it flips do_not_email + stops any drip.
+        # Without this, a public/one-click unsubscribe only lands in the scraper's
+        # suppression list and the CRM keeps re-enrolling the address.
+        try:
+            from cwscraper.integrations.crm import notify_email_reply
+            notify_email_reply(
+                from_email=target,
+                classification="unsubscribe",
+                subject="Unsubscribe",
+                snippet=f"Unsubscribed via public link ({source})",
+            )
+        except Exception:  # noqa: BLE001 — best-effort, never fail the unsubscribe
+            pass
         return True
 
     @app.route("/unsubscribe", methods=["GET"])
