@@ -1181,7 +1181,6 @@ def create_app() -> Flask:
         import hmac
         import re as _re
         import uuid as _uuid
-        from cwscraper.email.send_limits import check_can_queue
 
         expected = (os.getenv("CRM_INBOUND_KEY") or "").strip()
         presented = (request.headers.get("X-CRM-Key") or "").strip()
@@ -1204,15 +1203,10 @@ def create_app() -> Flask:
         # suppression + send caps so an internal notification always goes out.
         transactional = bool(data.get("transactional"))
 
-        if not transactional:
-            # Suppression (unsubscribes/bounces/manual) — 200 so the CRM records it.
-            if ctx.suppression and ctx.suppression.is_suppressed(to_email):
-                return jsonify({"status": "suppressed"}), 200
-
-            # Send-limits / warmup (daily cap, per-domain cap).
-            allowed, reason = check_can_queue(to_email, ctx.email_queue)
-            if not allowed:
-                return jsonify({"status": "rate_limited", "reason": reason}), 429
+        # Suppression (unsubscribes/bounces/manual) — 200 so the CRM records it.
+        # Checked before personalization so we don't burn an AI call on a no-send.
+        if not transactional and ctx.suppression and ctx.suppression.is_suppressed(to_email):
+            return jsonify({"status": "suppressed"}), 200
 
         sched_raw = (data.get("send_at") or "now").strip()
         if sched_raw.lower() in ("now", ""):
@@ -1250,7 +1244,7 @@ def create_app() -> Flask:
             if body_html:
                 body_html = body_html.replace("{{personalized_opener}}", opener).replace("{personalized_opener}", opener)
 
-        entry = ctx.email_queue.enqueue(
+        enqueue_kwargs = dict(
             prospect_id=prospect_id,
             lead_type="external",
             to_email=to_email,
@@ -1263,6 +1257,30 @@ def create_app() -> Flask:
             from_name=(data.get("from_name") or os.getenv("CWSCRAPER_FROM_NAME") or "").strip(),
             reply_to=(data.get("reply_to") or "").strip(),
         )
+
+        if transactional:
+            # Bypasses the cold-email caps — internal alerts always go out.
+            entry = ctx.email_queue.enqueue(**enqueue_kwargs)
+        else:
+            # Atomic send-limits / warmup check + enqueue: counting today's sends
+            # and writing the new entry happen under one queue lock, so concurrent
+            # sends can't both pass the cap check then both enqueue (the TOCTOU
+            # race that let a domain reach 10 against a cap of 5).
+            from cwscraper.email.send_limits import effective_daily_cap
+            daily_cap = effective_daily_cap()
+            try:
+                per_domain_cap = int(os.getenv("CWSCRAPER_SEND_PER_DOMAIN_DAILY_CAP", "5") or 5)
+            except ValueError:
+                per_domain_cap = 5
+            today = datetime.now(timezone.utc).date().isoformat()
+            entry, reason = ctx.email_queue.enqueue_checked(
+                daily_cap=daily_cap,
+                per_domain_cap=per_domain_cap,
+                today=today,
+                **enqueue_kwargs,
+            )
+            if entry is None:
+                return jsonify({"status": "rate_limited", "reason": reason}), 429
         return jsonify({"status": "queued", "id": entry["id"]}), 200
 
     @app.route("/api/emails/<email_id>/cancel", methods=["POST"])

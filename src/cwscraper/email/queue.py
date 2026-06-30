@@ -104,8 +104,8 @@ class ScheduledEmailQueue:
 
     # --- write paths ---
 
-    def enqueue(
-        self,
+    @staticmethod
+    def _new_entry(
         *,
         prospect_id: str,
         lead_type: str,
@@ -118,7 +118,7 @@ class ScheduledEmailQueue:
         from_name: str = "",
         reply_to: str = "",
     ) -> dict:
-        entry = {
+        return {
             "id": uuid.uuid4().hex,
             "prospect_id": prospect_id,
             "lead_type": lead_type,
@@ -138,11 +138,60 @@ class ScheduledEmailQueue:
             "provider_id": "",
             "error": "",
         }
+
+    def enqueue(self, **fields) -> dict:
+        entry = self._new_entry(**fields)
         with self._lock:
             rows = self._all()
             rows.append(entry)
             self._write(rows)
         return entry
+
+    # Committed volume for cap counting: a 'sending'/'sent' email is volume
+    # already spent; a 'pending' one is volume committed for today.
+    _COMMITTED = ("pending", "sending", "sent")
+
+    def enqueue_checked(
+        self,
+        *,
+        daily_cap: int,
+        per_domain_cap: int,
+        today: str,
+        **fields,
+    ) -> tuple[dict | None, str]:
+        """Enforce the daily + per-domain caps and enqueue **atomically**.
+
+        Counting today's committed sends and writing the new entry happen under
+        ONE lock, so two concurrent callers can't both pass the count check and
+        then both enqueue (the TOCTOU race that let sends overshoot the cap).
+        Returns (entry, "") on success, or (None, reason) when a cap is hit.
+        `today` is the YYYY-MM-DD (UTC) prefix matched against scheduled_for.
+        """
+        to_email = fields.get("to_email", "") or ""
+        domain = to_email.split("@", 1)[1].strip().lower() if "@" in to_email else ""
+        with self._lock:
+            rows = self._all()
+            total = 0
+            dom = 0
+            for r in rows:
+                if r.get("status") not in self._COMMITTED:
+                    continue
+                if (r.get("scheduled_for") or "")[:10] != today:
+                    continue
+                total += 1
+                if domain:
+                    rt = r.get("to_email") or ""
+                    rd = rt.split("@", 1)[1].strip().lower() if "@" in rt else ""
+                    if rd == domain:
+                        dom += 1
+            if total >= daily_cap:
+                return None, f"daily-cap ({total}/{daily_cap} used today)"
+            if per_domain_cap and domain and dom >= per_domain_cap:
+                return None, f"per-domain-cap (@{domain}: {dom}/{per_domain_cap} today)"
+            entry = self._new_entry(**fields)
+            rows.append(entry)
+            self._write(rows)
+            return entry, ""
 
     def claim_due(self, now_iso: str | None = None) -> list[dict]:
         """Atomically claim due-pending emails for sending.

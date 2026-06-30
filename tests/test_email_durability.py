@@ -130,3 +130,66 @@ def test_dispatcher_gives_up_after_max_transient_attempts(dispatcher):
                return_value=_RaisingTransport(TransportError("connection reset"))):
         dispatcher.tick()
     assert dispatcher.queue.get(e["id"])["status"] == "failed"
+
+
+# ---------- atomic cap-check (enqueue_checked) ---------------------------
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def test_enqueue_checked_enforces_per_domain_cap(queue):
+    now = datetime.now(timezone.utc).isoformat()
+    ok = 0
+    for i in range(8):  # cap is 5/domain — only 5 should land
+        entry, reason = queue.enqueue_checked(
+            daily_cap=50, per_domain_cap=5, today=_today(),
+            prospect_id=f"p{i}", lead_type="external", to_email=f"u{i}@same.com",
+            subject="s", body="b", scheduled_for=now,
+        )
+        if entry is not None:
+            ok += 1
+        else:
+            assert "per-domain-cap" in reason
+    assert ok == 5
+    assert len(queue.list(status="pending")) == 5
+
+
+def test_enqueue_checked_enforces_daily_cap(queue):
+    now = datetime.now(timezone.utc).isoformat()
+    ok = 0
+    for i in range(6):  # daily cap 3 across distinct domains
+        entry, reason = queue.enqueue_checked(
+            daily_cap=3, per_domain_cap=5, today=_today(),
+            prospect_id=f"p{i}", lead_type="external", to_email=f"u@d{i}.com",
+            subject="s", body="b", scheduled_for=now,
+        )
+        if entry is not None:
+            ok += 1
+        else:
+            assert "daily-cap" in reason
+    assert ok == 3
+
+
+def test_enqueue_checked_is_atomic_under_threads(queue):
+    """Concurrent calls must not overshoot the cap (the bug we're fixing)."""
+    import threading
+    now = datetime.now(timezone.utc).isoformat()
+    results = []
+
+    def worker(i):
+        entry, _ = queue.enqueue_checked(
+            daily_cap=50, per_domain_cap=5, today=_today(),
+            prospect_id=f"p{i}", lead_type="external", to_email=f"u{i}@race.com",
+            subject="s", body="b", scheduled_for=now,
+        )
+        results.append(entry is not None)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    # Exactly 5 should have succeeded — never more, despite 20 racing threads.
+    assert sum(results) == 5
+    assert len(queue.list(status="pending")) == 5
