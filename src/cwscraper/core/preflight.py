@@ -182,18 +182,20 @@ def _evaluate_directory(niche: NichePack, pf: PreflightCheck) -> None:
 
 
 def _evaluate_community(niche: NichePack, pf: PreflightCheck) -> None:
-    # Reddit is the bedrock community source, but anonymous access from
-    # cloud IPs (Railway, Heroku, AWS) returns 403 reliably. Warn so the
-    # user knows what to expect.
+    # Reddit is the bedrock community source, but Reddit now blocks the
+    # unauthenticated .json endpoints with HTTP 403 (from cloud *and* most
+    # local IPs). The scanner falls back to app-only OAuth when the client
+    # creds are set — so without them every subreddit 403s and returns 0.
     if not (pf.env_status["REDDIT_CLIENT_ID"] and pf.env_status["REDDIT_CLIENT_SECRET"]):
         pf.warnings.append({
             "code": "no_reddit_oauth",
-            "title": "Reddit OAuth not configured",
+            "title": "Reddit API credentials not configured",
             "detail": (
-                "Reddit blocks anonymous .json requests from cloud provider IPs "
-                "(Railway, etc.) — most subreddit scans will return HTTP 403. "
-                "Set REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET and connect via "
-                "Settings to bypass this. (Posting replies also requires OAuth.)"
+                "Reddit blocks unauthenticated .json requests with HTTP 403, so "
+                "subreddit scans will return zero results. Set REDDIT_CLIENT_ID + "
+                "REDDIT_CLIENT_SECRET (create a 'web app' at "
+                "reddit.com/prefs/apps) — that alone enables app-only scanning. "
+                "Connecting an account via Settings is only needed to POST replies."
             ),
             "action": "set_env",
             "env_vars": ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"],
