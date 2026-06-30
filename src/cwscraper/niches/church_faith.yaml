@@ -1,0 +1,128 @@
+slug: church_faith
+display_name: Church & Faith Communities
+description: |
+  Community-mode (Reddit/YouTube/HN) scanning for faith-community
+  conversations about caring for homebound, elderly, and isolated
+  congregants — shut-in ministries, visitation/deacon rotations,
+  member-care and congregational-care programs. The people posting
+  are usually pastors, deacons, member-care directors, or volunteers
+  looking for ways to keep up with members who slip through the cracks
+  between Sunday services and formal pastoral visits.
+
+  This is the consumer/community counterpart to the `churches_se`
+  directory pack — that one finds churches to email; this one finds
+  the live discussions where a daily wellness-check ministry is the
+  natural answer. Replies should be partnership/ministry-toned and
+  genuinely helpful, never vendor-y.
+
+# --- Intent scoring ---
+high_intent_keywords:
+  - homebound member
+  - homebound congregant
+  - homebound ministry
+  - shut-in ministry
+  - shut in ministry
+  - shut-ins
+  - visitation ministry
+  - member care ministry
+  - congregational care
+  - check on elderly members
+  - check on our seniors
+  - caring for widows
+  - elderly congregants alone
+  - isolated members
+  - keep up with our shut-ins
+  - daily check in ministry
+  - wellness check ministry
+
+medium_intent_keywords:
+  - church visitation
+  - nursing home ministry
+  - senior ministry
+  - elder care ministry
+  - aging congregation
+  - homebound communion
+  - caring for the elderly
+  - lonely members
+  - pastoral care elderly
+  - deacon visits
+  - prayer chain shut-ins
+  - care team church
+  - small church limited volunteers
+
+# --- Reddit sources ---
+subreddits:
+  - { name: pastors,        category: primary,    enabled: true  }
+  - { name: Christianity,   category: primary,    enabled: true  }
+  - { name: Catholicism,    category: primary,    enabled: true  }
+  - { name: Reformed,       category: general,    enabled: true  }
+  - { name: Christian,      category: general,    enabled: true  }
+  - { name: churchplanting, category: general,    enabled: true  }
+  - { name: TrueChristian,  category: general,    enabled: false }
+  - { name: AskAChristian,  category: general,    enabled: false }
+  - { name: deacons,        category: primary,    enabled: false }
+
+# --- YouTube search queries (used when YOUTUBE_API_KEY is set) ---
+youtube_queries:
+  - homebound ministry ideas
+  - church visitation ministry
+  - caring for elderly congregation
+  - shut-in ministry church
+  - senior ministry church
+  - congregational care program
+
+# --- HackerNews Algolia search queries ---
+hackernews_queries:
+  - church community software
+  - congregation care
+  - volunteer coordination church
+
+# --- Reply drafting templates ---
+# Triggers are substring matches against the lead's title + preview;
+# first matching template wins. Placeholders: {parent}, {parent_name}.
+default_reply_template: general_helpful
+
+reply_templates:
+  - key: shut_in_ministry
+    name: Shut-In / Homebound Ministry
+    triggers: [shut-in, shut in, homebound, visitation]
+    template: |
+      This is one of the hardest parts of member care — the homebound and shut-in folks are exactly the people most likely to slip through the cracks between visits, and there are never enough volunteer hours to cover everyone every day.
+
+      A few things that have worked for congregations I've seen wrestle with this:
+
+      1. **A daily check-in layer** under the visitation rotation — even a short scripted call every morning catches the "didn't pick up today" or "sounded off" days that a weekly visit would miss.
+      2. **Tier your list** — weekly in-person visits for the highest-need members, daily calls for everyone else, so volunteers aren't stretched thin.
+      3. **Document and escalate** — keep a simple log so anything concerning gets routed to the deacon or family fast.
+
+      There are wellness-check call services that handle the daily-call piece affordably and report back to your care team, which frees your volunteers for the relational/visitation side. Happy to share what that looks like if it's useful.
+
+  - key: limited_volunteers
+    name: Small Church / Limited Volunteers
+    triggers: [limited volunteers, small church, not enough volunteers, care team]
+    template: |
+      The volunteer-hours math is brutal for smaller congregations — you can't realistically put eyes on every isolated member every day, and the ones who need it most are often the quietest about it.
+
+      What's helped churches in this spot is splitting the work: keep the relational visits human (volunteers, deacons, the pastor), but automate the *daily safety check* so a missed day or a concerning call never goes unnoticed. A daily wellness-check call service can cover the whole homebound list for very little, flag the off-days, and escalate to your care team — so your limited volunteer hours go to the visits that actually need a person.
+
+      Glad to point you to specifics if you want to add a wellness-check piece without adding to the rota.
+
+  - key: caring_for_widows
+    name: Caring for Widows / Isolated Members
+    triggers: [widows, isolated members, lonely members, elderly congregants]
+    template: |
+      Caring for the widows and the isolated is right at the heart of what the church is called to — and it's also where good intentions quietly fall short, because loneliness doesn't announce itself.
+
+      A daily touchpoint is the thing that tends to make the biggest difference: a friendly check-in call every day that's both a moment of connection *and* a safety net. Some congregations do this with a phone-tree of volunteers; others use a wellness-check call service so it's consistent and someone's always alerted if a member doesn't answer or seems unwell.
+
+      Either way, the daily rhythm is what catches problems early. Happy to share what's worked if you're building this out.
+
+  - key: general_helpful
+    name: General Helpful Reply
+    triggers: []
+    template: |
+      This is such important work — keeping up with the members who can't make it to services is one of the quiet ministries that holds a congregation together.
+
+      The pattern that seems to work best is a daily touchpoint layered under your in-person visits: a short check-in call every day that both connects with the member and catches the day something's wrong (a missed call, a change in mood or health). Volunteers can run it as a phone tree, or a wellness-check call service can handle the daily calls and report back to your care team so nothing slips through.
+
+      A few other things worth looking into: a simple shared care log so visits and concerns are tracked, and connecting families of out-of-state members so they're in the loop. Glad to talk through any of it.
