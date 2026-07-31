@@ -48,6 +48,8 @@ except ImportError:
     anthropic = None  # type: ignore[assignment]
     _ANTHROPIC_AVAILABLE = False
 
+from apitracker_client import track
+
 logger = logging.getLogger("cwscraper.auto_reply")
 
 # Same model the personalizer uses — sharing the Anthropic SDK install +
@@ -216,7 +218,7 @@ def draft_auto_reply(
                 cleaned_reply, booking_link, demo_video_link,
                 error="ANTHROPIC_API_KEY not configured — used templated fallback",
             )
-        client = anthropic.Anthropic()
+        client = track(anthropic.Anthropic(), app='checkwell-scraper')
 
     system = SYSTEM_PROMPT.format(
         business_name=business_name,

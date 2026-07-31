@@ -59,6 +59,8 @@ except ImportError:  # pragma: no cover — tests can run without the package
     anthropic = None  # type: ignore[assignment]
     _ANTHROPIC_AVAILABLE = False
 
+from apitracker_client import track
+
 from cwscraper.core.niche import NichePack
 
 logger = logging.getLogger("cwscraper.personalizer")
@@ -410,7 +412,7 @@ class Personalizer:
             self.client = client
         elif _ANTHROPIC_AVAILABLE:
             # anthropic.Anthropic reads ANTHROPIC_API_KEY from env automatically
-            self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+            self.client = track(anthropic.Anthropic(api_key=api_key), app='checkwell-scraper') if api_key else track(anthropic.Anthropic(), app='checkwell-scraper')
         else:
             self.client = None
 

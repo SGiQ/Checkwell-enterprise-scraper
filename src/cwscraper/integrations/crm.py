@@ -202,7 +202,7 @@ def notify_email_reply(
         "from_email": addr,
         "classification": classification,
         "subject": subject or "",
-        "snippet": (snippet or "")[:500],
+        "snippet": (snippet or "")[:4000],  # enough of the reply body for the CRM timeline
         "message_id": message_id or "",
         "received_at": received_at or "",
     }
